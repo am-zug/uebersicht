@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Wohnungsübersicht – Am Zug</title>
+  <title>Wohnungen Am Zug</title>
   <style>
-    body{margin:0;font-family:sans-serif;background:#eef4f8;color:#233441}
+    body{margin:0;font-family:sans-serif;background:#ffffff;color:#233441}
     .wrap{max-width:1400px;margin:22px auto;padding:12px}
     .panel{background:#f1f3f5;border-radius:14px;box-shadow:0 6px 20px rgba(0,0,0,.08);padding:18px 22px}
     .controls{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
@@ -13,7 +13,7 @@
     select{width:100%;padding:6px 8px;border-radius:6px;border:1px solid #cfd7dd}
     .grid{display:grid;grid-template-columns:1fr 2fr;gap:18px;align-items:start}
     table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden}
-    thead{background:#2d3f4d;color:#fff}
+    thead{background:#d2bd76;color:#000}          /* header color per request */
     th,td{padding:8px 10px;font-size:14px;border-bottom:1px solid #e0e6eb;text-align:left}
     tr:hover, tr.active{background:#f8fbfd}
     .map-container{background:#fff;border-radius:12px;border:1px solid #dfe6eb;padding:10px;display:flex;align-items:center;justify-content:center;height:100%}
@@ -40,7 +40,7 @@
 <body>
 <div class="wrap">
   <div class="panel">
-    <h1>Wohnungen</h1>
+    <h1>Wohnungen Am Zug</h1>
     <div class="controls">
       <div class="field"><label>Etage</label><select id="floorSel"></select></div>
       <div class="field"><label>Status</label><select id="statusSel">
@@ -84,7 +84,7 @@ for(let i=1;i<=7;i++){DATA.push({id:`1.${i}`,rooms:2.5,level:1,m2:56,status:(i%3
 for(let i=1;i<=14;i++){DATA.push({id:`2.${i}`,rooms:1.5,level:2,m2:32.3,status:(i%5===0?"rented":"available")});}
 for(let i=1;i<=3;i++){DATA.push({id:`3.${i}`,rooms:2.5,level:3,m2:56,status:"available"});}
 
-/* Default factsheet fallback by room type (used if sheet cell empty) */
+/* Factsheet fallback by room type */
 const DEFAULT_FACTSHEET = {
   "2.5": "https://am-zug.ch/wp-content/uploads/2024/11/2.5-zimmer-wohnung-1.pdf",
   "1.5": "https://am-zug.ch/wp-content/uploads/2024/11/1.5-zimmer-wohnung.pdf"
@@ -117,15 +117,11 @@ async function syncStatusesFromSheet(){
       const unit = byId.get(id);
       if(unit){
         if(status) unit.status = status;
-        // factsheet from sheet OR fallback by room type:
         unit.factsheet = factsheet || DEFAULT_FACTSHEET[String(unit.rooms)];
       }
     });
-
-    // For any units not touched by the sheet, also apply the fallback factsheet:
-    DATA.forEach(u=>{
-      if(!u.factsheet) u.factsheet = DEFAULT_FACTSHEET[String(u.rooms)] || "";
-    });
+    // Ensure fallbacks for any not in sheet
+    DATA.forEach(u=>{ if(!u.factsheet) u.factsheet = DEFAULT_FACTSHEET[String(u.rooms)] || ""; });
 
     applyFilters();
     buildSvg();
@@ -155,7 +151,6 @@ function renderTable(list){
       <td>${d.factsheet ? `<a href="${d.factsheet}" target="_blank" rel="noopener">Factsheet</a>` : '–'}</td>
     </tr>`).join('');
 
-  // hover from table → svg
   tbody.querySelectorAll('tr').forEach(tr=>{
     const id=tr.getAttribute('data-unit');
     tr.addEventListener('mouseenter',()=>highlight(id,true));
@@ -172,7 +167,7 @@ function applyFilters(){
   renderTable(list);
 }
 
-/* Populate dropdowns from DATA (fallback) */
+/* Dropdowns */
 const floorSel=document.getElementById('floorSel');
 const roomsSel=document.getElementById('roomsSel');
 const floors=[...new Set(DATA.map(d=>d.level))];
@@ -203,7 +198,6 @@ function makeIsoBlock(x,y,z,w,d,h,colors,unitId){
   return g;
 }
 
-/* If fill='none', outline is provided via CSS .balcony polygon */
 function makeIsoPrismRaw(x,y,z,w,d,h,colors, cssClass, unitId){
   const g=document.createElementNS('http://www.w3.org/2000/svg','g');
   if(cssClass) g.setAttribute('class',cssClass);
@@ -224,26 +218,11 @@ function makeIsoPrismRaw(x,y,z,w,d,h,colors, cssClass, unitId){
 }
 
 /* Balconies helpers */
-function addSplitBalconiesFor25(x,y,z,w,d,status,unitId,onlyFilledThirdFloor=false){
-  const bw=35, bh=4, gap=4; const segD=(d-gap)/2; const colors=statusColors[status];
-  const outline=()=>({top:'none',front:'none',side:'none'});
-  if(onlyFilledThirdFloor){
-    const left2=makeIsoPrismRaw(x-bw-1, y+segD+gap, z, bw, segD, bh, colors, 'balcony', unitId);
-    const right1=makeIsoPrismRaw(x+w+1, y, z, bw, segD, bh, colors, 'balcony', unitId);
-    return [left2,right1];
-  }
-  const left1=makeIsoPrismRaw(x-bw-1, y, z, bw, segD, bh, outline(), 'balcony', unitId);
-  const left2=makeIsoPrismRaw(x-bw-1, y+segD+gap, z, bw, segD, bh, colors, 'balcony', unitId);
-  const right1=makeIsoPrismRaw(x+w+1, y, z, bw, segD, bh, colors, 'balcony', unitId);
-  const right2=makeIsoPrismRaw(x+w+1, y+segD+gap, z, bw, segD, bh, outline(), 'balcony', unitId);
-  return [left1,left2,right1,right2];
-}
-
 function addFullLengthBalconies(x,y,z,w,d,status,unitId){
   const bw=35, bh=4;
   const colors=statusColors[status];
-  const leftFull  = makeIsoPrismRaw(x-bw-1, y, z, bw, d, bh, colors, 'balcony', unitId);
-  const rightFull = makeIsoPrismRaw(x+w+1, y, z, bw, d, bh, colors, 'balcony', unitId);
+  const leftFull  = makeIsoPrismRaw(x-bw-1, y, z, bw, d, bh, colors, 'balcony', unitId); // LEFT = “front” side (as before)
+  const rightFull = makeIsoPrismRaw(x+w+1, y, z, bw, d, bh, colors, 'balcony', unitId); // RIGHT = “rear” side
   return [leftFull, rightFull];
 }
 
@@ -278,22 +257,44 @@ function buildSvg(){
       const block=makeIsoBlock(x,y,z,w,d,H,statusColors[u.status],u.id);
       scene.appendChild(block);
 
-      if(is25 && level===1){
-        const parts=addSplitBalconiesFor25(x,y,z,w,d,u.status,u.id,false);
-        parts.forEach(p=>scene.insertBefore(p, block));
+      if(level===1 && is25){
+        // Build split balconies explicitly, so we can drop the "rear" for 1.2.
+        const bw=35, bh=4, gap=4; const segD=(d-gap)/2;
+        const colors=statusColors[u.status];
+        const outline=()=>({top:'none',front:'none',side:'none'});
+        const left1 = makeIsoPrismRaw(x-bw-1, y, z, bw, segD, bh, outline(), 'balcony', u.id);
+        const left2 = makeIsoPrismRaw(x-bw-1, y+segD+gap, z, bw, segD, bh, colors,   'balcony', u.id);
+        const right1= makeIsoPrismRaw(x+w+1,  y, z, bw, segD, bh, colors,   'balcony', u.id); // REAR (filled half)
+        const right2= makeIsoPrismRaw(x+w+1,  y+segD+gap, z, bw, segD, bh, outline(), 'balcony', u.id);
+        // For 1.2 remove REAR (right side)
+        const dropRear = (u.id === "1.2");
+        [left1,left2].forEach(p=>scene.insertBefore(p, block));
+        if(!dropRear){ [right1,right2].forEach(p=>scene.insertBefore(p, block)); }
       }
 
       if(level===2){
-        const [leftFull, rightFull] = addFullLengthBalconies(x,y,z,w,d,u.status,u.id);
-        const keepFront = (seqIndex % 2 === 0);
-        const keepRear  = (seqIndex % 2 === 1);
-        if(keepFront){ scene.insertBefore(leftFull, block); }
-        if(keepRear){  scene.insertBefore(rightFull, block); }
+        // Alternation must START with REAR (right) at 2.1
+        const [frontBalcony, rearBalcony] = addFullLengthBalconies(x,y,z,w,d,u.status,u.id);
+        // seqIndex: 0 -> 2.1 -> REAR; 1 -> 2.2 -> FRONT; 2 -> 2.3 -> REAR; ...
+        const keepFront = (seqIndex % 2 === 1);
+        const keepRear  = (seqIndex % 2 === 0);
+
+        // Special: 2.3 should have NO balcony at all
+        if(u.id === "2.3"){
+          // do nothing (skip both)
+        }else{
+          if(keepFront){ scene.insertBefore(frontBalcony, block); }
+          if(keepRear){  scene.insertBefore(rearBalcony,  block); }
+        }
       }
 
-      if(is25 && level===3){
-        const parts=addSplitBalconiesFor25(x,y,z,w,d,u.status,u.id,true);
-        parts.forEach(p=>scene.insertBefore(p, block));
+      if(level===3 && is25){
+        // Like before: only the two filled halves (rear filled + front filled halves)
+        const bw=35, bh=4, gap=4; const segD=(d-gap)/2;
+        const colors=statusColors[u.status];
+        const left2 = makeIsoPrismRaw(x-bw-1, y+segD+gap, z, bw, segD, bh, colors, 'balcony', u.id);
+        const right1= makeIsoPrismRaw(x+w+1,  y, z,           bw, segD, bh, colors, 'balcony', u.id);
+        [left2,right1].forEach(p=>scene.insertBefore(p, block));
       }
 
       y += d + gapY;
@@ -323,16 +324,12 @@ function setSvgInteractivity(){
 }
 
 function highlight(id,on){
-  // SVG
   document.querySelectorAll(`#buildingSvg [data-unit="${id}"]`).forEach(el=>{
-    if(on) el.classList.add('highlight');
-    else el.classList.remove('highlight');
+    if(on) el.classList.add('highlight'); else el.classList.remove('highlight');
   });
-  // Table
   document.querySelectorAll(`#tbody tr`).forEach(tr=>{
     if(tr.getAttribute('data-unit')===id){
-      if(on) tr.classList.add('row-highlight');
-      else tr.classList.remove('row-highlight');
+      if(on) tr.classList.add('row-highlight'); else tr.classList.remove('row-highlight');
     }
   });
 }
@@ -349,8 +346,8 @@ function openFactsheet(id){
 /* ===== 8) INITIAL RENDER + SHEET SYNC ===== */
 applyFilters();
 buildSvg();
-setSvgInteractivity();   // make current SVG interactive
-syncStatusesFromSheet(); // then override from sheet (adds links/status)
+setSvgInteractivity();
+syncStatusesFromSheet();
 </script>
 </body>
 </html>
