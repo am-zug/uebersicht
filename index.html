@@ -1,40 +1,36 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Wohnungsübersicht – Am Zug</title>
-  <style>
-    body{margin:0;font-family:sans-serif;background:#eef4f8;color:#233441}
-    .wrap{max-width:1400px;margin:22px auto;padding:12px}
-    .panel{background:#f1f3f5;border-radius:14px;box-shadow:0 6px 20px rgba(0,0,0,.08);padding:18px 22px}
-    .controls{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
-    .field label{display:block;font-size:12px;color:#6b7b86;margin-bottom:4px}
-    select{width:100%;padding:6px 8px;border-radius:6px;border:1px solid #cfd7dd}
-    .grid{display:grid;grid-template-columns:1fr 2fr;gap:18px;align-items:start}
-    table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden}
-    thead{background:#2d3f4d;color:#fff}
-    th,td{padding:8px 10px;font-size:14px;border-bottom:1px solid #e0e6eb;text-align:left}
-    tr:hover, tr.active{background:#f8fbfd}
-    .map-container{background:#fff;border-radius:12px;border:1px solid #dfe6eb;padding:10px;display:flex;align-items:center;justify-content:center;height:100%}
-    svg{width:100%;height:100%}
-    .legend{display:flex;gap:14px;justify-content:flex-end;margin-top:10px;font-size:13px;color:#6b7b86}
-    .legend .sq{width:12px;height:12px;border-radius:2px}
-    .sq.ok{background:#5BBE7C}.sq.warn{background:#F5B942}.sq.no{background:#E17575}
-    .dot{display:inline-block;width:10px;height:10px;border-radius:50%}
-    .dot.available{background:#5BBE7C}
-    .dot.reserved{background:#F5B942}
-    .dot.rented{background:#E17575}
-
-    .unit-block{transition:filter .18s ease, transform .18s ease; cursor:pointer}
-    .unit-block.highlight{filter:saturate(1.8) brightness(1.06); transform:translateY(-2px)}
-    .row-highlight{background:#fff7d6 !important; box-shadow:inset 0 0 0 2px #f5b94240}
-
-    /* Balconies: no outline for colored ones; outlines only when fill="none" */
-    .balcony polygon{stroke:none; stroke-width:0}
-    .balcony polygon[fill="none"]{stroke:rgba(0,0,0,0.1); stroke-width:2}
-    .balcony.highlight polygon{filter:saturate(1.8) brightness(1.06)}
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Wohnungsübersicht - Am Zug</title>
+<style>
+body{margin:0;font-family:sans-serif;background:#eef4f8;color:#233441}
+.wrap{max-width:1400px;margin:22px auto;padding:12px}
+.panel{background:#fff;border-radius:14px;box-shadow:0 6px 20px rgba(0,0,0,.08);padding:18px 22px}
+.controls{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
+.field label{display:block;font-size:12px;color:#6b7b86;margin-bottom:4px}
+select{width:100%;padding:6px 8px;border-radius:6px;border:1px solid #d7d7dd}
+.grid{display:grid;grid-template-columns:1fr 2fr;gap:18px;align-items:start}
+table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden}
+th,td{padding:8px 10px;font-size:14px;border-bottom:1px solid #e0e6eb;text-align:left}
+thead{background:#2d3f4d;color:#fff}
+.map-container{background:#fff;border-radius:12px;padding:10px;display:flex;align-items:center;justify-content:center;height:100%}
+.map-container svg{width:100%;height:100%}
+.legend{display:flex;gap:14px;justify-content:flex-end;margin-top:10px;font-size:13px;color:#6b7b86}
+.legend .sq{width:12px;height:12px;border-radius:2px}
+.sq.ok{background:#5BBE7C}.sq.warn{background:#f5b942}.sq.no{background:#f17575}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%}
+.dot.available{background:#5BBE7C}.dot.reserved{background:#f5b942}.dot.rented{background:#f17575}
+.unit-block{transition:filter .18s ease, transform .18s ease; cursor:pointer}
+.unit-block.highlight{filter:saturate(1.8) brightness(1.06); transform:translateY(-2px)}
+.row-highlight{background:#fff7d6 !important; box-shadow: inset 0 0 2px #f5b94240}
+.balcony polygon{
+  stroke:rgba(0,0,0,0.1); 
+  stroke-width:2;
+}
+.balcony.highlight polygon{filter:saturate(1.8) brightness(1.06)}
+</style>
 </head>
 <body>
 <div class="wrap">
@@ -42,274 +38,126 @@
     <h1>Wohnungen</h1>
     <div class="controls">
       <div class="field"><label>Etage</label><select id="floorSel"></select></div>
-      <div class="field"><label>Status</label><select id="statusSel">
-        <option value="all">Alle</option>
-        <option value="available">Verfügbar</option>
-        <option value="reserved">Reserviert</option>
-        <option value="rented">Vermietet</option>
-      </select></div>
-      <div class="field"><label>Zimmer</label><select id="roomsSel"></select></div>
+      <div class="field"><label>Status</label><select id="statusSel"></select></div>
+      <div class="field"><label>Zimmer</label><select id="roomSel"></select></div>
     </div>
     <div class="grid">
-      <div>
-        <table>
-          <thead>
-            <tr>
-              <th>Nr.</th>
-              <th>Zimmer</th>
-              <th>Etage</th>
-              <th>m²</th>
-              <th>Status</th>
-              <th>Factsheet</th>
-            </tr>
-          </thead>
-          <tbody id="tbody"></tbody>
-        </table>
+      <table id="unitsTable">
+        <thead><tr><th>Nr.</th><th>Zimmer</th><th>Etage</th><th>m²</th><th>Status</th><th>Factsheet</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="map-container">
+        <svg id="buildingSvg" viewBox="0 0 800 500"></svg>
       </div>
-      <div>
-        <div class="map-container">
-          <svg id="buildingSvg" viewBox="0 0 1600 900"></svg>
-        </div>
-        <div class="legend"><span class="sq ok"></span> Verfügbar <span class="sq warn"></span> Reserviert <span class="sq no"></span> Vermietet</div>
-      </div>
+    </div>
+    <div class="legend">
+      <span><span class="sq ok"></span> Verfügbar</span>
+      <span><span class="sq warn"></span> Reserviert</span>
+      <span><span class="sq no"></span> Vermietet</span>
     </div>
   </div>
 </div>
-
 <script>
-/* === Baseline dataset (will be overridden by Google Sheet) === */
+/* === DATA === */
 const DATA=[];
 for(let i=1;i<=7;i++){DATA.push({id:`1.${i}`,rooms:2.5,level:1,m2:56,status:"available"});}
 for(let i=1;i<=14;i++){DATA.push({id:`2.${i}`,rooms:1.5,level:2,m2:32.3,status:"available"});}
 for(let i=1;i<=3;i++){DATA.push({id:`3.${i}`,rooms:2.5,level:3,m2:56,status:"available"});}
 
-/* === Google Sheet sync (id,status,factsheet) === */
+/* === Sync from Google Sheet === */
 const STATUS_CSV = "https://docs.google.com/spreadsheets/d/1-oeqRNM-CxGaILY7FNWaNMgC9ccBWDZDwU5l0Eic0pk/export?format=csv&gid=0";
-
-function parseStatusCsv(text){
-  const lines = text.trim().split(/\r?\n/);
-  if(!lines.length) return [];
-  const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
-  const rows = lines.slice(1).filter(Boolean);
-  return rows.map(r => {
-    const vals = r.split(',').map(s => (s||'').trim());
-    const obj = {};
-    headers.forEach((h,i)=> obj[h] = vals[i] || "");
-    return { id: obj.id, status: (obj.status||'').toLowerCase(), factsheet: obj.factsheet || "" };
+function parseCsv(text){
+  const lines=text.trim().split(/\r?\n/);
+  const header=lines[0].toLowerCase().split(",");
+  const rows=lines.slice(1);
+  return rows.map(r=>{
+    const cols=r.split(",").map(s=>s.trim());
+    const obj={};
+    header.forEach((h,i)=>obj[h]=cols[i]);
+    return obj;
   });
 }
-
 async function syncStatusesFromSheet(){
   try{
-    const res = await fetch(STATUS_CSV, { cache: 'no-store' });
-    const txt = await res.text();
-    const rows = parseStatusCsv(txt);
-    const byId = new Map(DATA.map(d => [d.id, d]));
-    rows.forEach(({id, status, factsheet}) => {
-      if(byId.has(id)) {
-        if(status){ byId.get(id).status = status; }
-        if(factsheet){ byId.get(id).factsheet = factsheet; }
+    const res=await fetch(STATUS_CSV,{cache:"no-store"});
+    const txt=await res.text();
+    const rows=parseCsv(txt);
+    const byId=new Map(DATA.map(d=>[d.id,d]));
+    rows.forEach(r=>{
+      if(byId.has(r.id)){
+        let d=byId.get(r.id);
+        if(r.status) d.status=r.status.toLowerCase();
+        if(r.factsheet) d.factsheet=r.factsheet;
       }
     });
-    applyFilters();
-    buildSvg();
-  }catch(e){
-    console.warn('Status sync failed:', e);
-  }
+    applyFilters(); buildSvg();
+  }catch(e){console.warn("Status sync failed:",e);}
 }
 
-/* === Colors === */
-const statusColors={
-  available:{top:'#dff2e7',front:'#cce6d6',side:'#c2dfcf'},
-  reserved:{top:'#fff3db',front:'#f0e1bf',side:'#e8d7ad'},
-  rented:{top:'#f9e0e0',front:'#eac9c9',side:'#e2bcbc'}
-};
-
-/* === Table & Filters === */
+/* === Rendering === */
 function renderTable(list){
-  const tbody=document.getElementById('tbody');
-  tbody.innerHTML=list.map(d=>`
-    <tr data-unit="${d.id}">
-      <td>${d.id}</td>
-      <td>${d.rooms}</td>
-      <td>${d.level}</td>
-      <td>${d.m2}</td>
-      <td><span class='dot ${d.status}'></span></td>
-      <td>${d.factsheet ? `<a href="${d.factsheet}" target="_blank" rel="noopener">Factsheet</a>` : ''}</td>
-    </tr>`).join('');
-  tbody.querySelectorAll('tr').forEach(tr=>{
-    const id=tr.getAttribute('data-unit');
-    tr.addEventListener('mouseenter',()=>{
-      document.querySelectorAll(`#buildingSvg [data-unit="${id}"]`).forEach(el=>el.classList.add('highlight'));
-    });
-    tr.addEventListener('mouseleave',()=>{
-      document.querySelectorAll(`#buildingSvg [data-unit="${id}"]`).forEach(el=>el.classList.remove('highlight'));
-    });
+  const tb=document.querySelector("#unitsTable tbody");
+  tb.innerHTML="";
+  list.forEach(d=>{
+    const tr=document.createElement("tr");
+    tr.dataset.unit=d.id;
+    tr.innerHTML=`<td>${d.id}</td><td>${d.rooms}</td><td>${d.level}</td><td>${d.m2}</td>
+      <td><span class="dot ${d.status}"></span></td>
+      <td>${d.factsheet?`<a href="${d.factsheet}" target="_blank">PDF</a>`:""}</td>`;
+    tr.addEventListener("mouseenter",()=>highlight(d.id,true));
+    tr.addEventListener("mouseleave",()=>highlight(d.id,false));
+    tb.appendChild(tr);
   });
 }
-
+function buildSvg(){
+  const svg=document.querySelector("#buildingSvg");
+  svg.innerHTML="";
+  DATA.forEach((d,i)=>{
+    const g=document.createElementNS("http://www.w3.org/2000/svg","g");
+    g.classList.add("unit-block");
+    g.dataset.unit=d.id;
+    g.innerHTML=`<rect x="${50+(i%7)*100}" y="${50+(d.level-1)*120}" width="80" height="60" 
+      fill="${d.status==="available"?"#c8e6c9":d.status==="reserved"?"#ffe082":"#ef9a9a"}" />`;
+    svg.appendChild(g);
+  });
+}
+function highlight(id,on){
+  document.querySelectorAll(`[data-unit="${id}"]`).forEach(el=>{
+    if(on) el.classList.add("highlight"); else el.classList.remove("highlight");
+  });
+  document.querySelectorAll(`#unitsTable tbody tr`).forEach(tr=>{
+    if(tr.dataset.unit===id){ if(on) tr.classList.add("row-highlight"); else tr.classList.remove("row-highlight"); }
+  });
+}
 function applyFilters(){
-  const fFloor=document.getElementById('floorSel').value;
-  const fStatus=document.getElementById('statusSel').value;
-  const fRooms=document.getElementById('roomsSel').value;
-  const list=DATA.filter(d=>(fFloor==='all'||d.level==fFloor)&&(fStatus==='all'||d.status===fStatus)&&(fRooms==='all'||d.rooms==fRooms));
+  const floor=document.querySelector("#floorSel").value;
+  const status=document.querySelector("#statusSel").value;
+  const rooms=document.querySelector("#roomSel").value;
+  let list=DATA.filter(d=>
+    (floor==="all"||d.level==floor)&&
+    (status==="all"||d.status===status)&&
+    (rooms==="all"||d.rooms==rooms)
+  );
   renderTable(list);
 }
 
-/* Dropdowns */
-const floorSel=document.getElementById('floorSel');
-const roomsSel=document.getElementById('roomsSel');
-const floors=[...new Set(DATA.map(d=>d.level))];
-const rooms=[...new Set(DATA.map(d=>d.rooms))];
-floorSel.innerHTML='<option value="all">Alle</option>'+floors.map(f=>`<option value="${f}">${f}</option>`).join('');
-roomsSel.innerHTML='<option value="all">Alle</option>'+rooms.map(r=>`<option value="${r}">${r}</option>`).join('');
-document.getElementById('floorSel').addEventListener('change',()=>{applyFilters(); buildSvg();});
-document.getElementById('statusSel').addEventListener('change',()=>{applyFilters(); buildSvg();});
-document.getElementById('roomsSel').addEventListener('change',()=>{applyFilters(); buildSvg();});
-
-/* === Isometric projection === */
-const COS=Math.cos(Math.PI/6);
-const SIN=Math.sin(Math.PI/6);
-function isoX(x,y,z){return (x + y)*COS;}
-function isoY(x,y,z){return (y - x)*SIN - z;}
-
-function makeIsoBlock(x,y,z,w,d,h,colors,unitId){
-  const g=document.createElementNS('http://www.w3.org/2000/svg','g');
-  g.setAttribute('class','unit-block');
-  if(unitId) g.setAttribute('data-unit',unitId);
-  const top=`${isoX(x,y,z)} ${isoY(x,y,z)} ${isoX(x+w,y,z)} ${isoY(x+w,y,z)} ${isoX(x+w,y+d,z)} ${isoY(x+w,y+d,z)} ${isoX(x,y+d,z)} ${isoY(x,y+d,z)}`;
-  const pTop=document.createElementNS('http://www.w3.org/2000/svg','polygon'); pTop.setAttribute('points',top); pTop.setAttribute('fill',colors.top);
-  const front=`${isoX(x,y,z)} ${isoY(x,y,z)} ${isoX(x+w,y,z)} ${isoY(x+w,y,z)} ${isoX(x+w,y,z+h)} ${isoY(x+w,y,z+h)} ${isoX(x,y,z+h)} ${isoY(x,y,z+h)}`;
-  const pFront=document.createElementNS('http://www.w3.org/2000/svg','polygon'); pFront.setAttribute('points',front); pFront.setAttribute('fill',colors.front);
-  const side=`${isoX(x+w,y,z)} ${isoY(x+w,y,z)} ${isoX(x+w,y+d,z)} ${isoY(x+w,y+d,z)} ${isoX(x+w,y+d,z+h)} ${isoY(x+w,y+d,z+h)} ${isoX(x+w,y,z+h)} ${isoY(x+w,y,z+h)}`;
-  const pSide=document.createElementNS('http://www.w3.org/2000/svg','polygon'); pSide.setAttribute('points',side); pSide.setAttribute('fill',colors.side);
-  g.appendChild(pTop); g.appendChild(pFront); g.appendChild(pSide);
-  return g;
+/* === Setup filters === */
+function initFilters(){
+  const floors=[...new Set(DATA.map(d=>d.level))];
+  const selF=document.querySelector("#floorSel");
+  selF.innerHTML="<option value='all'>Alle</option>"+floors.map(f=>`<option value='${f}'>${f}</option>`).join("");
+  const selS=document.querySelector("#statusSel");
+  selS.innerHTML="<option value='all'>Alle</option><option value='available'>Verfügbar</option><option value='reserved'>Reserviert</option><option value='rented'>Vermietet</option>";
+  const rooms=[...new Set(DATA.map(d=>d.rooms))];
+  const selR=document.querySelector("#roomSel");
+  selR.innerHTML="<option value='all'>Alle</option>"+rooms.map(r=>`<option value='${r}'>${r}</option>`).join("");
+  [selF,selS,selR].forEach(sel=>sel.addEventListener("change",applyFilters));
 }
 
-function makeIsoPrismRaw(x,y,z,w,d,h,colors, cssClass, unitId){
-  const g=document.createElementNS('http://www.w3.org/2000/svg','g');
-  if(cssClass) g.setAttribute('class',cssClass);
-  if(unitId) g.setAttribute('data-unit',unitId);
-  const topPts=`${isoX(x,y,z)} ${isoY(x,y,z)} ${isoX(x+w,y,z)} ${isoY(x+w,y,z)} ${isoX(x+w,y+d,z)} ${isoY(x+w,y+d,z)} ${isoX(x,y+d,z)} ${isoY(x,y+d,z)}`;
-  const fPts=`${isoX(x,y,z)} ${isoY(x,y,z)} ${isoX(x+w,y,z)} ${isoY(x+w,y,z)} ${isoX(x+w,y,z+h)} ${isoY(x+w,y,z+h)} ${isoX(x,y,z+h)} ${isoY(x,y,z+h)}`;
-  const sPts=`${isoX(x+w,y,z)} ${isoY(x+w,y,z)} ${isoX(x+w,y+d,z)} ${isoY(x+w,y+d,z)} ${isoX(x+w,y+d,z+h)} ${isoY(x+w,y+d,z+h)} ${isoX(x+w,y,z+h)} ${isoY(x+w,y,z+h)}`;
-  const pTop=document.createElementNS('http://www.w3.org/2000/svg','polygon'); pTop.setAttribute('points',topPts);
-  const pFront=document.createElementNS('http://www.w3.org/2000/svg','polygon'); pFront.setAttribute('points',fPts);
-  const pSide=document.createElementNS('http://www.w3.org/2000/svg','polygon'); pSide.setAttribute('points',sPts);
-  [pTop, pFront, pSide].forEach((p,i)=>{
-    const key=i===0?'top':(i===1?'front':'side');
-    const fill=colors[key];
-    if(fill==='none'){
-      p.setAttribute('fill','none');
-      p.setAttribute('stroke','rgba(0,0,0,0.1)');
-      p.setAttribute('stroke-width','2');
-    }else{
-      p.setAttribute('fill',fill);
-    }
-  });
-  g.appendChild(pTop); g.appendChild(pFront); g.appendChild(pSide);
-  return g;
-}
-
-/* Balconies */
-function addSplitBalconiesFor25(x,y,z,w,d,status,unitId,onlyFilledThirdFloor=false){
-  const bw=35, bh=4, gap=4; const segD=(d-gap)/2; const colors=statusColors[status];
-  const outline=()=>({top:'none',front:'none',side:'none'});
-  if(onlyFilledThirdFloor){
-    const left2=makeIsoPrismRaw(x-bw-1, y+segD+gap, z, bw, segD, bh, colors, 'balcony', unitId);
-    const right1=makeIsoPrismRaw(x+w+1, y, z, bw, segD, bh, colors, 'balcony', unitId);
-    return [left2,right1];
-  }
-  const left1=makeIsoPrismRaw(x-bw-1, y, z, bw, segD, bh, outline(), 'balcony', unitId);
-  const left2=makeIsoPrismRaw(x-bw-1, y+segD+gap, z, bw, segD, bh, colors, 'balcony', unitId);
-  const right1=makeIsoPrismRaw(x+w+1, y, z, bw, segD, bh, colors, 'balcony', unitId);
-  const right2=makeIsoPrismRaw(x+w+1, y+segD+gap, z, bw, segD, bh, outline(), 'balcony', unitId);
-  return [left1,left2,right1,right2];
-}
-
-function addFullLengthBalconies(x,y,z,w,d,status,unitId){
-  const bw=35, bh=4;
-  const colors=statusColors[status];
-  const leftFull  = makeIsoPrismRaw(x-bw-1, y, z, bw, d, bh, colors, 'balcony', unitId);
-  const rightFull = makeIsoPrismRaw(x+w+1, y, z, bw, d, bh, colors, 'balcony', unitId);
-  return [leftFull, rightFull];
-}
-
-/* Build scene */
-function buildSvg(){
-  const svg=document.getElementById('buildingSvg');
-  svg.innerHTML='';
-  const scene=document.createElementNS('http://www.w3.org/2000/svg','g');
-  scene.setAttribute('id','scene');
-  svg.appendChild(scene);
-
-  const W25=64, D25=64;
-  const W15=W25, D15=D25/2;
-  const H=26;
-  const gapY=8;
-  const floorGapZ=126;
-
-  const originX=0, originY=0;
-
-  [1,2,3].forEach(level=>{
-    const units=DATA.filter(d=>d.level===level);
-    const x=originX;
-    const z=(level-1)*(H + floorGapZ);
-    let y=originY;
-    let seqIndex=0;
-
-    units.forEach(u=>{
-      const is25 = (u.rooms===2.5);
-      const w = is25 ? W25 : W15;
-      const d = is25 ? D25 : D15;
-
-      const block=makeIsoBlock(x,y,z,w,d,H,statusColors[u.status],u.id);
-      scene.appendChild(block);
-
-      // Floor 1: 2.5-room split balconies both sides (outline + filled)
-      if(is25 && level===1){
-        const parts=addSplitBalconiesFor25(x,y,z,w,d,u.status,u.id,false);
-        parts.forEach(p=>scene.insertBefore(p, block));
-      }
-
-      // Floor 2: one full-length balcony per side, alternating keep/delete
-      if(level===2){
-        const [leftFull, rightFull] = addFullLengthBalconies(x,y,z,w,d,u.status,u.id);
-        const keepFront = (seqIndex % 2 === 0); // keep, delete, keep...
-        const keepRear  = (seqIndex % 2 === 1); // delete, keep, delete...
-        if(keepFront){ scene.insertBefore(leftFull, block); }
-        if(keepRear){  scene.insertBefore(rightFull, block); }
-      }
-
-      // Floor 3: only the "filled halves"
-      if(is25 && level===3){
-        const parts=addSplitBalconiesFor25(x,y,z,w,d,u.status,u.id,true);
-        parts.forEach(p=>scene.insertBefore(p, block));
-      }
-
-      y += d + gapY;
-      seqIndex++;
-    });
-  });
-
-  // Fit to viewBox
-  const vb=svg.viewBox.baseVal; const margin=40;
-  const bbox=document.getElementById('scene').getBBox();
-  const scale=Math.min((vb.width-2*margin)/bbox.width, (vb.height-2*margin)/bbox.height);
-  const tx=(vb.width - bbox.width*scale)/2 - bbox.x*scale;
-  const ty=(vb.height - bbox.height*scale)/2 - bbox.y*scale;
-  document.getElementById('scene').setAttribute('transform',`translate(${tx},${ty}) scale(${scale})`);
-}
-
-/* Initial render, then apply Google Sheet overrides */
+initFilters();
 applyFilters();
 buildSvg();
 syncStatusesFromSheet();
-
-/* --- helpers needed before first render --- */
-function renderTable(list){} // placeholders for hoisting; real defs are above
-function applyFilters(){}
 </script>
 </body>
 </html>
