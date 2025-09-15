@@ -281,29 +281,36 @@ function addInsetOnTop(g, x, y, z, w, d, insetPx, fill, stroke){
 
 /* ===== 6) BUILD THE ISOMETRIC SCENE ===== */
 function addDefs(svg){
-  // Stairs: white background, lines ~30% thinner, rotated exactly 30°
-  const defs = document.createElementNS('http://www.w3.org/2000/svg','defs');
+// Stairs: white bg, 3 lines, angle aligned with iso edges
+const defs = document.createElementNS('http://www.w3.org/2000/svg','defs');
 
-  const pat = document.createElementNS('http://www.w3.org/2000/svg','pattern');
-  pat.setAttribute('id','stairsPattern');
-  pat.setAttribute('patternUnits','userSpaceOnUse');
-  pat.setAttribute('width','8'); pat.setAttribute('height','8');
-  pat.setAttribute('patternTransform','rotate(30)');
+const pat = document.createElementNS('http://www.w3.org/2000/svg','pattern');
+pat.setAttribute('id','stairsPattern');
+pat.setAttribute('patternUnits','userSpaceOnUse');
+// bigger tile so we can explicitly draw exactly 3 lines
+pat.setAttribute('width','12');
+pat.setAttribute('height','12');
+// rotate to match the iso edge direction (use -30°, not +30°)
+pat.setAttribute('patternTransform','rotate(-30)');
 
-  const bg = document.createElementNS('http://www.w3.org/2000/svg','rect');
-  bg.setAttribute('x','0'); bg.setAttribute('y','0'); bg.setAttribute('width','8'); bg.setAttribute('height','8');
-  bg.setAttribute('fill', '#ffffff');   // WHITE fill
-  pat.appendChild(bg);
+const bg = document.createElementNS('http://www.w3.org/2000/svg','rect');
+bg.setAttribute('x','0'); bg.setAttribute('y','0');
+bg.setAttribute('width','12'); bg.setAttribute('height','12');
+bg.setAttribute('fill','#ffffff');
+pat.appendChild(bg);
 
-  // Two vertical lines; rotation makes them 30° in the scene
-  const lines = document.createElementNS('http://www.w3.org/2000/svg','path');
-  lines.setAttribute('d','M0,0 L0,8 M4,0 L4,8');
-  lines.setAttribute('stroke','rgba(0,0,0,0.55)');
-  lines.setAttribute('stroke-width','1.1');  // thinner (~30% less than 1.6)
-  pat.appendChild(lines);
+// exactly three parallel lines inside the tile
+const lines = document.createElementNS('http://www.w3.org/2000/svg','path');
+// lines at x = 2, 6, 10 across the 12px tile
+lines.setAttribute('d','M2,0 L2,12 M6,0 L6,12 M10,0 L10,12');
+lines.setAttribute('stroke','rgba(0,0,0,0.55)');
+lines.setAttribute('stroke-width','1.0'); // thin
+lines.setAttribute('shape-rendering','crispEdges');
+pat.appendChild(lines);
 
-  defs.appendChild(pat);
-  svg.appendChild(defs);
+defs.appendChild(pat);
+svg.appendChild(defs);
+
 }
 
 function buildSvg(){
