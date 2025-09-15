@@ -146,9 +146,9 @@ const statusColors={
   reserved:{top:'#fff3db',front:'#f0e1bf',side:'#e8d7ad'},
   rented:{top:'#f9e0e0',front:'#eac9c9',side:'#e2bcbc'}
 };
-/* special fills */
-const FILL_DARK30 = 'rgba(0,0,0,0.30)'; // 30% black
-const stairsPatternFill = 'url(#stairsPattern)'; // defined in <defs>
+/* special fills (15% black now) */
+const FILL_DARK15 = 'rgba(0,0,0,0.15)';
+const stairsPatternFill = 'url(#stairsPattern)';
 
 /* ===== 4) TABLE & FILTERS ===== */
 function renderTable(list){
@@ -235,7 +235,7 @@ function addFullLengthBalconies(x,y,z,w,d,status,unitId){
   return [leftFull, rightFull];
 }
 
-/* Helpers for 3.2 lift inset (draw small box on the TOP face) */
+/* Inset helper for the lift symbol (small box on top face) */
 function addInsetOnTop(g, x, y, z, w, d, insetPx, fill, stroke){
   const top = [
     [isoX(x,     y,     z), isoY(x,     y,     z)],
@@ -243,7 +243,6 @@ function addInsetOnTop(g, x, y, z, w, d, insetPx, fill, stroke){
     [isoX(x+w,   y+d,   z), isoY(x+w,   y+d,   z)],
     [isoX(x,     y+d,   z), isoY(x,     y+d,   z)]
   ];
-  // simple centroid inset
   const cx = (top[0][0]+top[1][0]+top[2][0]+top[3][0])/4;
   const cy = (top[0][1]+top[1][1]+top[2][1]+top[3][1])/4;
   const pts = top.map(([X,Y])=>{
@@ -261,21 +260,19 @@ function addInsetOnTop(g, x, y, z, w, d, insetPx, fill, stroke){
 
 /* ===== 6) BUILD THE ISOMETRIC SCENE ===== */
 function addDefs(svg){
-  // Striped "stairs" pattern with dark background
+  // Striped "stairs" pattern with 15% black background
   const defs = document.createElementNS('http://www.w3.org/2000/svg','defs');
   const pat = document.createElementNS('http://www.w3.org/2000/svg','pattern');
   pat.setAttribute('id','stairsPattern');
   pat.setAttribute('patternUnits','userSpaceOnUse');
   pat.setAttribute('width','8'); pat.setAttribute('height','8');
-  // background
   const bg = document.createElementNS('http://www.w3.org/2000/svg','rect');
   bg.setAttribute('x','0'); bg.setAttribute('y','0'); bg.setAttribute('width','8'); bg.setAttribute('height','8');
-  bg.setAttribute('fill', FILL_DARK30);
+  bg.setAttribute('fill', 'rgba(0,0,0,0.15)');
   pat.appendChild(bg);
-  // lines
   const line1 = document.createElementNS('http://www.w3.org/2000/svg','path');
   line1.setAttribute('d','M0,8 L8,0 M-2,6 L2,10 M6,-2 L10,2');
-  line1.setAttribute('stroke','rgba(0,0,0,0.55)');
+  line1.setAttribute('stroke','rgba(0,0,0,0.45)');
   line1.setAttribute('stroke-width','1.6');
   pat.appendChild(line1);
   defs.appendChild(pat);
@@ -315,27 +312,39 @@ function buildSvg(){
       scene.appendChild(block);
 
       if(level===1 && is25){
-        // Split balconies; 1.2 drops REAR; 1.7 REAR becomes STAIRS pattern
+        // Split balconies; special rear content for 1.2 and 1.7
         const bw=35, bh=4, gap=4; const segD=(d-gap)/2;
         const colors=statusColors[u.status];
         const outline=()=>({top:'none',front:'none',side:'none'});
+
         const left1 = makeIsoPrismRaw(x-bw-1, y, z, bw, segD, bh, outline(), 'balcony', u.id);
         const left2 = makeIsoPrismRaw(x-bw-1, y+segD+gap, z, bw, segD, bh, colors,   'balcony', u.id);
 
         // Default rear halves
         let right1Colors = colors;                 // filled half
         let right2Colors = outline();              // outline half
+        let right1Extra  = null;                   // function to add inset if needed
+        let right2Extra  = null;
 
-        // 1.7 special: rear outline should symbolize staircase (pattern)
+        // 1.2: make rear like 3.2 (stairs then lift)
+        if(u.id==="1.2"){
+          right1Colors = {top:stairsPatternFill,front:stairsPatternFill,side:stairsPatternFill};
+          right2Colors = {top:FILL_DARK15,front:FILL_DARK15,side:FILL_DARK15};
+          right2Extra  = (g)=>addInsetOnTop(g, x+w+1, y+segD+gap, z, bw, segD, 6, 'rgba(255,255,255,0.65)', 'rgba(0,0,0,0.45)');
+        }
+
+        // 1.7: rear outline should symbolize staircase (pattern)
         if(u.id==="1.7"){
           right2Colors = {top:stairsPatternFill,front:stairsPatternFill,side:stairsPatternFill};
         }
 
-        const right1= makeIsoPrismRaw(x+w+1,  y,            z, bw, segD, bh, right1Colors, 'balcony', u.id); // REAR
+        const right1= makeIsoPrismRaw(x+w+1,  y,            z, bw, segD, bh, right1Colors, 'balcony', u.id);
         const right2= makeIsoPrismRaw(x+w+1,  y+segD+gap,   z, bw, segD, bh, right2Colors, 'balcony', u.id);
+        if(right1Extra) right1Extra(right1);
+        if(right2Extra) right2Extra(right2);
 
         [left1,left2].forEach(p=>scene.insertBefore(p, block));
-        if(u.id!=="1.2"){ [right1,right2].forEach(p=>scene.insertBefore(p, block)); }
+        [right1,right2].forEach(p=>scene.insertBefore(p, block));
       }
 
       if(level===2){
@@ -343,42 +352,51 @@ function buildSvg(){
         const [frontBalcony, rearBalcony] = addFullLengthBalconies(x,y,z,w,d,u.status,u.id);
         const keepFront = (seqIndex % 2 === 1); // 2.2, 2.4, ...
         const keepRear  = (seqIndex % 2 === 0); // 2.1, 2.3, ...
-        if(u.id !== "2.3"){
-          // 2.14 must always have a REAR "staircase" balcony
-          if(u.id === "2.14"){
-            // force rear staircase (pattern fill)
-            const bw=35, bh=4;
-            const rearStairs = makeIsoPrismRaw(x+w+1, y, z, bw, d, bh,
-              {top:stairsPatternFill,front:stairsPatternFill,side:stairsPatternFill},
-              'balcony', u.id);
-            scene.insertBefore(rearStairs, block);
-          }else{
-            if(keepFront) scene.insertBefore(frontBalcony, block);
-            if(keepRear)  scene.insertBefore(rearBalcony,  block);
-          }
+
+        // Special overrides:
+        if(u.id === "2.14"){
+          // Always rear staircase
+          const bw=35, bh=4;
+          const rearStairs = makeIsoPrismRaw(x+w+1, y, z, bw, d, bh,
+            {top:stairsPatternFill,front:stairsPatternFill,side:stairsPatternFill},
+            'balcony', u.id);
+          scene.insertBefore(rearStairs, block);
+        } else if(u.id === "2.2"){
+          // Rear staircase
+          const bw=35, bh=4;
+          const rearStairs = makeIsoPrismRaw(x+w+1, y, z, bw, d, bh,
+            {top:stairsPatternFill,front:stairsPatternFill,side:stairsPatternFill},
+            'balcony', u.id);
+          scene.insertBefore(rearStairs, block);
+        } else if(u.id === "2.3"){
+          // Rear lift only
+          const bw=35, bh=4;
+          const rearLift = makeIsoPrismRaw(x+w+1, y, z, bw, d, bh,
+            {top:FILL_DARK15,front:FILL_DARK15,side:FILL_DARK15},
+            'balcony', u.id);
+          addInsetOnTop(rearLift, x+w+1, y, z, bw, d, 8, 'rgba(255,255,255,0.65)', 'rgba(0,0,0,0.45)');
+          scene.insertBefore(rearLift, block);
+        } else {
+          if(keepFront) scene.insertBefore(frontBalcony, block);
+          if(keepRear)  scene.insertBefore(rearBalcony,  block);
         }
       }
 
       if(level===3 && is25){
         const bw=35, bh=4, gap=4; const segD=(d-gap)/2;
         const colors=statusColors[u.status];
-
         if(u.id==="3.2"){
-          // Two REAR small balconies. Left = staircase pattern, Right = lift with inner box.
+          // Two REAR small balconies. Left = staircase, Right = lift.
           const rearLeft  = makeIsoPrismRaw(x+w+1, y, z, bw, segD, bh,
             {top:stairsPatternFill,front:stairsPatternFill,side:stairsPatternFill}, 'balcony', u.id);
           const rearRight = makeIsoPrismRaw(x+w+1, y+segD+gap, z, bw, segD, bh,
-            {top:FILL_DARK30,front:FILL_DARK30,side:FILL_DARK30}, 'balcony', u.id);
-          // add inner "lift" box on the right small rear balcony (top face)
+            {top:FILL_DARK15,front:FILL_DARK15,side:FILL_DARK15}, 'balcony', u.id);
           addInsetOnTop(rearRight, x+w+1, y+segD+gap, z, bw, segD, 6, 'rgba(255,255,255,0.65)', 'rgba(0,0,0,0.45)');
           scene.insertBefore(rearLeft,  block);
           scene.insertBefore(rearRight, block);
-
-          // keep the left filled-front half as before (visual consistency)
           const left2 = makeIsoPrismRaw(x-bw-1, y+segD+gap, z, bw, segD, bh, colors, 'balcony', u.id);
           scene.insertBefore(left2, block);
         }else{
-          // Default third floor: rear filled (first half) and front filled (second half)
           const left2 = makeIsoPrismRaw(x-bw-1, y+segD+gap, z, bw, segD, bh, colors, 'balcony', u.id);
           const right1= makeIsoPrismRaw(x+w+1,  y,           z, bw, segD, bh, colors, 'balcony', u.id);
           [left2,right1].forEach(p=>scene.insertBefore(p, block));
