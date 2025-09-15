@@ -104,7 +104,7 @@ const DEFAULT_FACTSHEET = {
   "1.5": "https://am-zug.ch/wp-content/uploads/2024/11/1.5-zimmer-wohnung.pdf"
 };
 
-/* ===== 2) GOOGLE SHEET SYNC (with SAFE normalizers) ===== */
+/* ===== 2) GOOGLE SHEET SYNC ===== */
 const STATUS_CSV = "https://docs.google.com/spreadsheets/d/1-oeqRNM-CxGaILY7FNWaNMgC9ccBWDZDwU5l0Eic0pk/export?format=csv&gid=0";
 
 function normalizeId(raw){
@@ -117,13 +117,6 @@ function normalizeId(raw){
   }
   return `${fl}.${frac}`;
 }
-function normalizeStatus(raw){
-  const t = String(raw||"").trim().toLowerCase();
-  if(['available','verfügbar','verfuegbar','frei'].includes(t)) return 'available';
-  if(['reserved','reserviert'].includes(t)) return 'reserved';
-  if(['rented','vermietet','belegt'].includes(t)) return 'rented';
-  return 'available'; // safe default
-}
 function parseStatusCsv(text){
   const lines = text.trim().split(/\r?\n/);
   if(!lines.length) return [];
@@ -132,7 +125,7 @@ function parseStatusCsv(text){
   return rows.map(r=>{
     const vals=r.split(",").map(s=>(s||"").trim());
     const obj={}; headers.forEach((h,i)=>obj[h]=vals[i]||"");
-    return { id: normalizeId(obj.id), status: normalizeStatus(obj.status), factsheet:obj.factsheet||"" };
+    return { id: normalizeId(obj.id), status:(obj.status||"").toLowerCase(), factsheet:obj.factsheet||"" };
   });
 }
 async function syncStatusesFromSheet(){
@@ -147,14 +140,11 @@ async function syncStatusesFromSheet(){
     rows.forEach(({id,status,factsheet})=>{
       const unit = byId.get(id);
       if(unit){
-        unit.status = normalizeStatus(status);
+        if(status) unit.status = status;
         unit.factsheet = factsheet || DEFAULT_FACTSHEET[String(unit.rooms)];
       }
     });
-    DATA.forEach(u=>{ 
-      u.status = normalizeStatus(u.status);
-      if(!u.factsheet) u.factsheet = DEFAULT_FACTSHEET[String(u.rooms)] || ""; 
-    });
+    DATA.forEach(u=>{ if(!u.factsheet) u.factsheet = DEFAULT_FACTSHEET[String(u.rooms)] || ""; });
 
     applyFilters();
     buildSvg();
@@ -164,15 +154,12 @@ async function syncStatusesFromSheet(){
   }
 }
 
-/* ===== 3) COLORS & SAFETY ===== */
+/* ===== 3) COLORS ===== */
 const statusColors={
   available:{top:'#dff2e7',front:'#cce6d6',side:'#c2dfcf'},
   reserved:{top:'#fff3db',front:'#f0e1bf',side:'#e8d7ad'},
   rented:{top:'#f9e0e0',front:'#eac9c9',side:'#e2bcbc'}
 };
-function safeColors(status){
-  return statusColors[normalizeStatus(status)] || statusColors.available;
-}
 /* special fills */
 const FILL_DARK15 = 'rgba(0,0,0,0.15)';
 const STAIRS_FILL = 'url(#stairsPattern)';
@@ -186,7 +173,7 @@ function renderTable(list){
       <td>${d.rooms}</td>
       <td>${d.level}</td>
       <td>${d.m2}</td>
-      <td><span class='dot ${normalizeStatus(d.status)}' title='${normalizeStatus(d.status)}'></span></td>
+      <td><span class='dot ${d.status}' title='${d.status}'></span></td>
       <td>${d.factsheet ? `<a href="${d.factsheet}" target="_blank" rel="noopener">Factsheet</a>` : '–'}</td>
     </tr>`).join('');
 
@@ -199,11 +186,9 @@ function renderTable(list){
 }
 function applyFilters(){
   const fFloor=document.getElementById('floorSel').value;
-  const fStatus=normalizeStatus(document.getElementById('statusSel').value);
+  const fStatus=document.getElementById('statusSel').value;
   const fRooms=document.getElementById('roomsSel').value;
-  const list=DATA.filter(d=>(fFloor==='all'||d.level==fFloor)
-    && (fStatus==='all'||normalizeStatus(d.status)===fStatus)
-    && (fRooms==='all'||d.rooms==fRooms));
+  const list=DATA.filter(d=>(fFloor==='all'||d.level==fFloor)&&(fStatus==='all'||d.status===fStatus)&&(fRooms==='all'||d.rooms==fRooms));
   renderTable(list);
 }
 /* Dropdowns */
@@ -213,6 +198,9 @@ const floors=[...new Set(DATA.map(d=>d.level))];
 const rooms=[...new Set(DATA.map(d=>d.rooms))];
 floorSel.innerHTML='<option value="all">Alle</option>'+floors.map(f=>`<option value="${f}">${f}</option>`).join('');
 roomsSel.innerHTML='<option value="all">Alle</option>'+rooms.map(r=>`<option value="${r}">${r}</option>`).join('');
+document.getElementById('floorSel').addEventListener('change',()=>{applyFilters(); buildSvg(); setSvgInteractivity();});
+document.getElementById('statusSel').addEventListener('change',()=>{applyFilters(); buildSvg(); setSvgInteractivity();});
+document.getElementById('roomsSel').addEventListener('change',()=>{applyFilters(); buildSvg(); setSvgInteractivity();});
 
 /* ===== 5) ISOMETRIC PROJECTION ===== */
 const COS=Math.cos(Math.PI/6);
@@ -246,7 +234,7 @@ function makeIsoPrismRaw(x,y,z,w,d,h,colors, cssClass, unitId){
   [pTop,pFront,pSide].forEach((p,i)=>{
     const key=i===0?'top':(i===1?'front':'side');
     const fill=colors[key];
-    p.setAttribute('fill', (fill && fill!=='none')? fill : 'none');
+    if(fill && fill!=='none'){ p.setAttribute('fill',fill); } else { p.setAttribute('fill','none'); }
   });
   g.appendChild(pTop); g.appendChild(pFront); g.appendChild(pSide);
   return g;
@@ -255,7 +243,7 @@ function makeIsoPrismRaw(x,y,z,w,d,h,colors, cssClass, unitId){
 /* Full-length balconies (left=front, right=rear) */
 function addFullLengthBalconies(x,y,z,w,d,status,unitId){
   const bw=35, bh=4;
-  const colors=safeColors(status);
+  const colors=statusColors[status];
   const leftFull  = makeIsoPrismRaw(x-bw-1, y, z, bw, d, bh, colors, 'balcony', unitId); // FRONT
   const rightFull = makeIsoPrismRaw(x+w+1, y, z, bw, d, bh, colors, 'balcony', unitId); // REAR
   return [leftFull, rightFull];
@@ -299,6 +287,7 @@ function addDefs(svg){
   bg.setAttribute('fill', '#ffffff');
   pat.appendChild(bg);
 
+  // vertical lines (pattern rotated 30°)
   const lines = document.createElementNS('http://www.w3.org/2000/svg','path');
   lines.setAttribute('d','M0,0 L0,8 M4,0 L4,8');
   lines.setAttribute('stroke','rgba(0,0,0,0.55)');
@@ -309,137 +298,137 @@ function addDefs(svg){
   svg.appendChild(defs);
 }
 
-/* Numbering RIGHT -> LEFT */
+/* Compute y so that numbering runs RIGHT -> LEFT (id .1 is rightmost) */
 function yForUnit(level, subIndex, d, gapY, maxByLevel){
-  const max = maxByLevel[level];
-  const posFromLeft = max - subIndex;
-  return posFromLeft * (d + gapY);
+  const max = maxByLevel[level];                // e.g., {1:7, 2:14, 3:3}
+  const posFromLeft = max - subIndex;           // 0 = leftmost, increasing to the right
+  return 0 + posFromLeft * (d + gapY);          // originY assumed 0
 }
 
 function buildSvg(){
-  try{
-    const svg=document.getElementById('buildingSvg');
-    svg.innerHTML='';
-    addDefs(svg);
+  const svg=document.getElementById('buildingSvg');
+  svg.innerHTML='';
+  addDefs(svg);
 
-    const scene=document.createElementNS('http://www.w3.org/2000/svg','g');
-    scene.setAttribute('id','scene');
-    svg.appendChild(scene);
+  const scene=document.createElementNS('http://www.w3.org/2000/svg','g');
+  scene.setAttribute('id','scene');
+  svg.appendChild(scene);
 
-    const W25=64, D25=64;      // 2.5 Zimmer
-    const W15=W25, D15=D25/2;  // 1.5 Zimmer
-    const H=26;
-    const gapY=8;
-    const floorGapZ=126;
+  const W25=64, D25=64;      // 2.5 Zimmer
+  const W15=W25, D15=D25/2;  // 1.5 Zimmer
+  const H=26;
+  const gapY=8;
+  const floorGapZ=126;
 
-    const originX=0;
-    const maxByLevel={1:7,2:14,3:3};
+  const originX=0;
 
-    DATA.forEach(u=>{
-      const status = normalizeStatus(u.status);
-      const colors = safeColors(status);
-      const is25 = (u.rooms===2.5);
-      const w = is25 ? W25 : W15;
-      const d = is25 ? D25 : D15;
+  const maxByLevel={1:7,2:14,3:3};
 
-      const z=(u.level-1)*(H + floorGapZ);
-      const sub = parseInt(u.id.split('.')[1],10);
-      const y = yForUnit(u.level, sub, d, gapY, maxByLevel);
-      const x = originX;
+  DATA.forEach(u=>{
+    /* dimensions */
+    const is25 = (u.rooms===2.5);
+    const w = is25 ? W25 : W15;
+    const d = is25 ? D25 : D15;
 
-      const block=makeIsoBlock(x,y,z,w,d,H,colors,u.id);
-      scene.appendChild(block);
+    /* positions */
+    const z=(u.level-1)*(H + floorGapZ);
+    const sub = parseInt(u.id.split('.')[1],10);
+    const y = yForUnit(u.level, sub, d, gapY, maxByLevel);
+    const x = originX;
 
-      /* FLOOR 1 — 2.5er */
-      if(u.level===1 && is25){
-        const bw=35, bh=4, segGap=4; const segD=(d-segGap)/2;
-        const outline=()=>({top:'none',front:'none',side:'none'});
+    /* main block */
+    const block=makeIsoBlock(x,y,z,w,d,H,statusColors[u.status],u.id);
+    scene.appendChild(block);
 
-        const left1  = makeIsoPrismRaw(x-bw-1, y,            z, bw, segD, bh, outline(), 'balcony', u.id);
-        const left2  = makeIsoPrismRaw(x-bw-1, y+segD+segGap,z, bw, segD, bh, colors,   'balcony', u.id);
+    /* FLOOR 1 — 2.5er */
+    if(u.level===1 && is25){
+      const bw=35, bh=4, segGap=4; const segD=(d-segGap)/2;
+      const colors=statusColors[u.status];
+      const outline=()=>({top:'none',front:'none',side:'none'});
 
-        let right1Colors = colors;                 // default: rear upper filled
-        let right2Colors = outline();              // default: rear lower outline
-        let right1Extra=null, right2Extra=null;
+      const left1  = makeIsoPrismRaw(x-bw-1, y,            z, bw, segD, bh, outline(), 'balcony', u.id);
+      const left2  = makeIsoPrismRaw(x-bw-1, y+segD+segGap,z, bw, segD, bh, colors,   'balcony', u.id);
 
-        if(u.id==="1.2"){
-          right1Colors = {top:STAIRS_FILL,front:STAIRS_FILL,side:STAIRS_FILL};
-          right2Colors = {top:FILL_DARK15,front:FILL_DARK15,side:FILL_DARK15};
-          right2Extra  = (g)=>addInsetOnTop(g, x+w+1, y+segD+segGap, z, bw, segD, 6, 'rgba(255,255,255,0.65)', 'rgba(0,0,0,0.45)');
-        }
-        if(u.id==="1.7"){
-          right2Colors = {top:STAIRS_FILL,front:STAIRS_FILL,side:STAIRS_FILL};
-        }
+      let right1Colors = colors;                 // default: rear upper filled
+      let right2Colors = outline();              // default: rear lower outline
+      let right1Extra=null, right2Extra=null;
 
-        const right1 = makeIsoPrismRaw(x+w+1, y,            z, bw, segD, bh, right1Colors, 'balcony', u.id);
-        const right2 = makeIsoPrismRaw(x+w+1, y+segD+segGap,z, bw, segD, bh, right2Colors, 'balcony', u.id);
-        if(right1Extra) right1Extra(right1);
-        if(right2Extra) right2Extra(right2);
-
-        [left1,left2,right1,right2].forEach(p=>scene.insertBefore(p, block));
+      // 1.2: rear like 3.2 (stairs + lift)
+      if(u.id==="1.2"){
+        right1Colors = {top:STAIRS_FILL,front:STAIRS_FILL,side:STAIRS_FILL};
+        right2Colors = {top:FILL_DARK15,front:FILL_DARK15,side:FILL_DARK15};
+        right2Extra  = (g)=>addInsetOnTop(g, x+w+1, y+segD+segGap, z, bw, segD, 6, 'rgba(255,255,255,0.65)', 'rgba(0,0,0,0.45)');
+      }
+      // 1.7: rear lower = staircase
+      if(u.id==="1.7"){
+        right2Colors = {top:STAIRS_FILL,front:STAIRS_FILL,side:STAIRS_FILL};
       }
 
-      /* FLOOR 2 — alternating by numeric index + overrides */
-      if(u.level===2){
-        const [frontBalcony, rearBalcony] = addFullLengthBalconies(x,y,z,w,d,status,u.id);
-        const n=sub;
-        const keepRear  = (n % 2 === 1); // 2.1 rear, 2.3 rear, ...
-        const keepFront = (n % 2 === 0); // 2.2 front, 2.4 front, ...
+      const right1 = makeIsoPrismRaw(x+w+1, y,            z, bw, segD, bh, right1Colors, 'balcony', u.id);
+      const right2 = makeIsoPrismRaw(x+w+1, y+segD+segGap,z, bw, segD, bh, right2Colors, 'balcony', u.id);
+      if(right1Extra) right1Extra(right1);
+      if(right2Extra) right2Extra(right2);
 
-        if(u.id === "2.14" || u.id === "2.2"){
-          const bw=35, bh=4;
-          const rearStairs = makeIsoPrismRaw(x+w+1, y, z, bw, d, bh,
-            {top:STAIRS_FILL,front:STAIRS_FILL,side:STAIRS_FILL}, 'balcony', u.id);
-          scene.insertBefore(rearStairs, block);
-        } else if(u.id === "2.3"){
-          const bw=35, bh=4;
-          const rearLift = makeIsoPrismRaw(x+w+1, y, z, bw, d, bh,
-            {top:FILL_DARK15,front:FILL_DARK15,side:FILL_DARK15}, 'balcony', u.id);
-          addInsetOnTop(rearLift, x+w+1, y, z, bw, d, 8, 'rgba(255,255,255,0.65)', 'rgba(0,0,0,0.45)');
-          scene.insertBefore(rearLift, block);
-        } else {
-          if(keepFront) scene.insertBefore(frontBalcony, block);
-          if(keepRear)  scene.insertBefore(rearBalcony,  block);
-        }
-      }
-
-      /* FLOOR 3 — 2.5er with 3.2 special */
-      if(u.level===3 && is25){
-        const bw=35, bh=4, segGap=4; const segD=(d-segGap)/2;
-        if(u.id==="3.2"){
-          const rearLeft  = makeIsoPrismRaw(x+w+1, y,            z, bw, segD, bh,
-            {top:STAIRS_FILL,front:STAIRS_FILL,side:STAIRS_FILL}, 'balcony', u.id);
-          const rearRight = makeIsoPrismRaw(x+w+1, y+segD+segGap,z, bw, segD, bh,
-            {top:FILL_DARK15,front:FILL_DARK15,side:FILL_DARK15}, 'balcony', u.id);
-          addInsetOnTop(rearRight, x+w+1, y+segD+segGap, z, bw, segD, 6, 'rgba(255,255,255,0.65)', 'rgba(0,0,0,0.45)');
-          scene.insertBefore(rearLeft,  block);
-          scene.insertBefore(rearRight, block);
-
-          const left2 = makeIsoPrismRaw(x-bw-1, y+segD+segGap, z, bw, segD, bh, colors, 'balcony', u.id);
-          scene.insertBefore(left2, block);
-        }else{
-          const left2 = makeIsoPrismRaw(x-bw-1, y+segD+segGap, z, bw, segD, bh, colors, 'balcony', u.id);
-          const right1= makeIsoPrismRaw(x+w+1,  y,           z, bw, segD, bh, colors, 'balcony', u.id);
-          [left2,right1].forEach(p=>scene.insertBefore(p, block));
-        }
-      }
-    });
-
-    // Fit to viewBox safely
-    const vb=svg.viewBox.baseVal; const margin=40;
-    const sceneNode=document.getElementById('scene');
-    const bbox=sceneNode.getBBox();
-    if(bbox.width>0 && bbox.height>0){
-      const scale=Math.min((vb.width-2*margin)/bbox.width, (vb.height-2*margin)/bbox.height);
-      const tx=(vb.width - bbox.width*scale)/2 - bbox.x*scale;
-      const ty=(vb.height - bbox.height*scale)/2 - bbox.y*scale;
-      sceneNode.setAttribute('transform',`translate(${tx},${ty}) scale(${scale})`);
-    } else {
-      sceneNode.setAttribute('transform',''); // nothing drawn – avoid NaN transform
+      [left1,left2,right1,right2].forEach(p=>scene.insertBefore(p, block));
     }
-  }catch(err){
-    console.error('Build SVG failed:', err);
-  }
+
+    /* FLOOR 2 — alternating by numeric index (anchored at 2.1) + overrides */
+    if(u.level===2){
+      const [frontBalcony, rearBalcony] = addFullLengthBalconies(x,y,z,w,d,u.status,u.id);
+      const n=sub;
+      const keepRear  = (n % 2 === 1); // 2.1 rear, 2.3 rear, ...
+      const keepFront = (n % 2 === 0); // 2.2 front, 2.4 front, ...
+
+      if(u.id === "2.14" || u.id === "2.2"){
+        // Always rear staircase
+        const bw=35, bh=4;
+        const rearStairs = makeIsoPrismRaw(x+w+1, y, z, bw, d, bh,
+          {top:STAIRS_FILL,front:STAIRS_FILL,side:STAIRS_FILL}, 'balcony', u.id);
+        scene.insertBefore(rearStairs, block);
+      } else if(u.id === "2.3"){
+        // Rear lift
+        const bw=35, bh=4;
+        const rearLift = makeIsoPrismRaw(x+w+1, y, z, bw, d, bh,
+          {top:FILL_DARK15,front:FILL_DARK15,side:FILL_DARK15}, 'balcony', u.id);
+        addInsetOnTop(rearLift, x+w+1, y, z, bw, d, 8, 'rgba(255,255,255,0.65)', 'rgba(0,0,0,0.45)');
+        scene.insertBefore(rearLift, block);
+      } else {
+        if(keepFront) scene.insertBefore(frontBalcony, block);
+        if(keepRear)  scene.insertBefore(rearBalcony,  block);
+      }
+    }
+
+    /* FLOOR 3 — 2.5er with 3.2 special */
+    if(u.level===3 && is25){
+      const bw=35, bh=4, segGap=4; const segD=(d-segGap)/2;
+      const colors=statusColors[u.status];
+
+      if(u.id==="3.2"){
+        const rearLeft  = makeIsoPrismRaw(x+w+1, y,            z, bw, segD, bh,
+          {top:STAIRS_FILL,front:STAIRS_FILL,side:STAIRS_FILL}, 'balcony', u.id);
+        const rearRight = makeIsoPrismRaw(x+w+1, y+segD+segGap,z, bw, segD, bh,
+          {top:FILL_DARK15,front:FILL_DARK15,side:FILL_DARK15}, 'balcony', u.id);
+        addInsetOnTop(rearRight, x+w+1, y+segD+segGap, z, bw, segD, 6, 'rgba(255,255,255,0.65)', 'rgba(0,0,0,0.45)');
+        scene.insertBefore(rearLeft,  block);
+        scene.insertBefore(rearRight, block);
+
+        const left2 = makeIsoPrismRaw(x-bw-1, y+segD+segGap, z, bw, segD, bh, colors, 'balcony', u.id);
+        scene.insertBefore(left2, block);
+      }else{
+        const left2 = makeIsoPrismRaw(x-bw-1, y+segD+segGap, z, bw, segD, bh, colors, 'balcony', u.id);
+        const right1= makeIsoPrismRaw(x+w+1,  y,           z, bw, segD, bh, colors, 'balcony', u.id);
+        [left2,right1].forEach(p=>scene.insertBefore(p, block));
+      }
+    }
+  });
+
+  // Fit to viewBox
+  const vb=document.getElementById('buildingSvg').viewBox.baseVal; const margin=40;
+  const bbox=document.getElementById('scene').getBBox();
+  const scale=Math.min((vb.width-2*margin)/bbox.width, (vb.height-2*margin)/bbox.height);
+  const tx=(vb.width - bbox.width*scale)/2 - bbox.x*scale;
+  const ty=(vb.height - bbox.height*scale)/2 - bbox.y*scale;
+  document.getElementById('scene').setAttribute('transform',`translate(${tx},${ty}) scale(${scale})`);
 }
 
 /* ===== 7) INTERACTIVITY (SVG ↔ Table) ===== */
@@ -472,14 +461,18 @@ function openFactsheet(id){
   }
 }
 
-/* ===== 8) INIT ===== */
-function init(){
-  applyFilters();
-  buildSvg();
-  setSvgInteractivity();
-  syncStatusesFromSheet();
-}
-document.addEventListener('DOMContentLoaded', init);
+/* ===== 8) INITIAL RENDER + SHEET SYNC ===== */
+const floorSel=document.getElementById('floorSel');
+const roomsSel=document.getElementById('roomsSel');
+const floors=[...new Set(DATA.map(d=>d.level))];
+const rooms=[...new Set(DATA.map(d=>d.rooms))];
+floorSel.innerHTML='<option value="all">Alle</option>'+floors.map(f=>`<option value="${f}">${f}</option>`).join('');
+roomsSel.innerHTML='<option value="all">Alle</option>'+rooms.map(r=>`<option value="${r}">${r}</option>`).join('');
+
+applyFilters();
+buildSvg();
+setSvgInteractivity();
+syncStatusesFromSheet();
 
 document.getElementById('floorSel').addEventListener('change',()=>{applyFilters(); buildSvg(); setSvgInteractivity();});
 document.getElementById('statusSel').addEventListener('change',()=>{applyFilters(); buildSvg(); setSvgInteractivity();});
