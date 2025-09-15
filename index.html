@@ -32,7 +32,7 @@
     .row-flash{animation:flash 1.2s ease}
     @keyframes flash{0%{background:#fff3c4} 100%{background:transparent}}
 
-    /* Subtle outlines on ALL balconies */
+    /* Balcony outlines kept */
     .balcony polygon{stroke:rgba(0,0,0,0.1); stroke-width:2}
     .balcony.highlight polygon{filter:saturate(1.8) brightness(1.06)}
   </style>
@@ -78,79 +78,89 @@
 </div>
 
 <script>
-/* ========= SHEET CONFIG ========= */
+/* ======== SHEET CSV ======== */
 const SHEET_CSV = "https://docs.google.com/spreadsheets/d/1-oeqRNM-CxGaILY7FNWaNMgC9ccBWDZDwU5l0Eic0pk/export?format=csv&gid=0";
 
-/* ========= FALLBACK DATA ========= */
-let DATA = [];
-for(let i=1;i<=7;i++){DATA.push({id:`1.${i}`,rooms:2.5,level:1,m2:56,status:(i%3===0?"reserved":"available"),factsheet:""});}
-for(let i=1;i<=14;i++){DATA.push({id:`2.${i}`,rooms:1.5,level:2,m2:32.3,status:(i%5===0?"rented":"available"),factsheet:""});}
-for(let i=1;i<=3;i++){DATA.push({id:`3.${i}`,rooms:2.5,level:3,m2:56,status:"available",factsheet:""});}
-
-/* Default factsheets if the sheet cell is empty */
-const DEFAULT_FACTSHEET = {
-  "2.5": "https://am-zug.ch/wp-content/uploads/2024/11/2.5-zimmer-wohnung-1.pdf",
-  "1.5": "https://am-zug.ch/wp-content/uploads/2024/11/1.5-zimmer-wohnung.pdf"
-};
-
-/* ========= HELPERS ========= */
-function normalizeId(raw){ return String(raw||"").trim(); }
-function normalizeStatus(raw){
-  const t = String(raw||"").trim().toLowerCase();
+/* ======== NORMALIZATION ======== */
+function normStatus(v){
+  const t = String(v||"").trim().toLowerCase();
   if(['available','verfügbar','verfuegbar','frei'].includes(t)) return 'available';
   if(['reserved','reserviert'].includes(t)) return 'reserved';
   if(['rented','vermietet','belegt'].includes(t)) return 'rented';
   return 'available';
 }
 function num(x){ const n = Number(String(x||"").replace(',','.')); return isNaN(n) ? null : n; }
+
+/* ======== PARSE CSV (supports new key/level/unit AND legacy id) ======== */
 function parseCsv(text){
   const lines = text.trim().split(/\r?\n/);
   if(!lines.length) return [];
   const headers = lines[0].split(",").map(h=>h.trim().toLowerCase());
+
   return lines.slice(1).filter(Boolean).map(row=>{
     const vals=row.split(",").map(v=>(v||"").trim());
     const o={}; headers.forEach((h,i)=>o[h]=vals[i]||"");
-    const rooms = num(o.rooms);
+
     const level = num(o.level);
+    let unit    = num(o.unit);
+    let rooms   = num(o.rooms);
     const m2    = num(o.m2);
+    const factsheet = o.factsheet || "";
+
+    // If unit is missing but legacy id exists, derive from it (best-effort)
+    if(!unit && o.id){
+      const m = String(o.id).trim().match(/^(\d+)\.(\d+)$/);
+      if(m){ unit = num(m[2]); }
+    }
+
+    // Derive display id from level+unit
+    const displayId = (level && unit) ? `${level}.${unit}` : (o.id || "");
+
+    // Internal stable key: prefer provided key; else generate from level+unit
+    const key = String(o.key || (level && unit ? `L${level}-U${unit}` : displayId)).trim();
+
     return {
-      id: normalizeId(o.id),
-      rooms,
+      key,                // internal immutable
+      id: displayId,      // shown in table
       level,
+      unit,
+      rooms,
       m2,
-      status: normalizeStatus(o.status),
-      factsheet: o.factsheet || (rooms ? DEFAULT_FACTSHEET[String(rooms)] || "" : "")
+      status: normStatus(o.status),
+      factsheet
     };
-  }).filter(u=>u.id && u.rooms && u.level);
+  }).filter(u=>u.key && u.level && u.unit && u.rooms);
 }
 
-/* ========= COLORS ========= */
+/* ======== COLORS ======== */
 const statusColors={
   available:{top:'#dff2e7',front:'#cce6d6',side:'#c2dfcf'},
   reserved:{top:'#fff3db',front:'#f0e1bf',side:'#e8d7ad'},
   rented:{top:'#f9e0e0',front:'#eac9c9',side:'#e2bcbc'}
 };
-function safeColors(status){ return statusColors[normalizeStatus(status)] || statusColors.available; }
-const FILL_DARK15 = 'rgba(0,0,0,0.15)';        // lift
-const stairsPatternFill = 'url(#stairsPattern)';// WHITE stair pattern
+function col(status){ return statusColors[normStatus(status)] || statusColors.available; }
+const FILL_DARK15 = 'rgba(0,0,0,0.15)';           // lift
+const STAIRS_FILL = 'url(#stairsPattern)';         // WHITE stairs pattern
 
-/* ========= TABLE & FILTERS ========= */
+/* ======== TABLE & FILTERS ======== */
+let DATA = []; // will be sheet-driven
+
 function renderTable(list){
   const tbody=document.getElementById('tbody');
   tbody.innerHTML=list.map(d=>`
-    <tr data-unit="${d.id}">
+    <tr data-key="${d.key}">
       <td>${d.id}</td>
       <td>${d.rooms}</td>
       <td>${d.level}</td>
       <td>${d.m2 ?? ""}</td>
-      <td><span class='dot ${normalizeStatus(d.status)}' title='${normalizeStatus(d.status)}'></span></td>
+      <td><span class='dot ${normStatus(d.status)}' title='${normStatus(d.status)}'></span></td>
       <td>${d.factsheet ? `<a href="${d.factsheet}" target="_blank" rel="noopener">Factsheet</a>` : '–'}</td>
     </tr>`).join('');
   tbody.querySelectorAll('tr').forEach(tr=>{
-    const id=tr.getAttribute('data-unit');
-    tr.addEventListener('mouseenter',()=>highlight(id,true));
-    tr.addEventListener('mouseleave',()=>highlight(id,false));
-    tr.addEventListener('click',()=>openFactsheet(id));
+    const key=tr.getAttribute('data-key');
+    tr.addEventListener('mouseenter',()=>highlight(key,true));
+    tr.addEventListener('mouseleave',()=>highlight(key,false));
+    tr.addEventListener('click',()=>openFactsheet(key));
   });
 }
 function applyFilters(){
@@ -159,7 +169,7 @@ function applyFilters(){
   const fRooms=document.getElementById('roomsSel').value;
   const list=DATA.filter(d=>
     (fFloor==='all'||String(d.level)===String(fFloor)) &&
-    (fStatus==='all'||normalizeStatus(d.status)===fStatus) &&
+    (fStatus==='all'||normStatus(d.status)===fStatus) &&
     (fRooms==='all'||String(d.rooms)===String(fRooms))
   );
   renderTable(list);
@@ -173,24 +183,21 @@ function populateSelects(){
     '<option value="all">Alle</option>' + rooms.map(r=>`<option value="${r}">${r}</option>`).join('');
 }
 
-/* ========= ISOMETRIC ========= */
+/* ======== ISOMETRIC CORE ======== */
 const COS=Math.cos(Math.PI/6), SIN=Math.sin(Math.PI/6);
 function isoX(x,y,z){return (x + y)*COS;}
 function isoY(x,y,z){return (y - x)*SIN - z;}
 function NS(tag){ return document.createElementNS('http://www.w3.org/2000/svg',tag); }
-function poly(pts,fill){
-  const p=NS('polygon'); p.setAttribute('points', pts.map(([X,Y,Z])=>`${isoX(X,Y,Z)} ${isoY(X,Y,Z)}`).join(' '));
-  p.setAttribute('fill', fill==='none'?'none':fill); return p;
-}
-function makeIsoBlock(x,y,z,w,d,h,colors,unitId){
-  const g=NS('g'); g.setAttribute('class','unit-block'); g.setAttribute('data-unit',unitId);
+function poly(pts,fill){ const p=NS('polygon'); p.setAttribute('points', pts.map(([X,Y,Z])=>`${isoX(X,Y,Z)} ${isoY(X,Y,Z)}`).join(' ')); p.setAttribute('fill', fill==='none'?'none':fill); return p; }
+function makeIsoBlock(x,y,z,w,d,h,colors,key){
+  const g=NS('g'); g.setAttribute('class','unit-block'); g.setAttribute('data-key',key);
   const pTop   = poly([[x,y,z],[x+w,y,z],[x+w,y+d,z],[x,y,d+z]], colors.top);
   const pFront = poly([[x,y,z],[x+w,y,z],[x+w,y,z+h],[x,y,z+h]], colors.front);
   const pSide  = poly([[x+w,y,z],[x+w,y+d,z],[x+w,y+d,z+h],[x+w,y,z+h]], colors.side);
   [pTop,pFront,pSide].forEach(p=>g.appendChild(p)); return g;
 }
-function makeIsoPrismRaw(x,y,z,w,d,h,colors, cssClass, unitId){
-  const g=NS('g'); if(cssClass) g.setAttribute('class',cssClass); if(unitId) g.setAttribute('data-unit',unitId);
+function makeIsoPrismRaw(x,y,z,w,d,h,colors, cssClass, key){
+  const g=NS('g'); if(cssClass) g.setAttribute('class',cssClass); if(key) g.setAttribute('data-key',key);
   const pTop   = poly([[x,y,z],[x+w,y,z],[x+w,y+d,z],[x,y,d+z]], colors.top||'none');
   const pFront = poly([[x,y,z],[x+w,y,z],[x+w,y,z+h],[x,y,z+h]], colors.front||'none');
   const pSide  = poly([[x+w,y,z],[x+w,y+d,z],[x+w,y+d,z+h],[x+w,y,z+h]], colors.side||'none');
@@ -206,128 +213,111 @@ function addInsetOnTop(g, x, y, z, w, d, insetPx, fill, stroke){
   g.appendChild(p);
 }
 function addDefs(svg){
-  // WHITE stairs background, vertical lines rotated 30°
+  // WHITE stairs background, lines at 30°
   const defs=NS('defs');
   const pat=NS('pattern');
   pat.setAttribute('id','stairsPattern');
   pat.setAttribute('patternUnits','userSpaceOnUse');
   pat.setAttribute('width','8'); pat.setAttribute('height','8');
   pat.setAttribute('patternTransform','rotate(30)');
-
   const bg=NS('rect'); bg.setAttribute('x','0'); bg.setAttribute('y','0'); bg.setAttribute('width','8'); bg.setAttribute('height','8'); bg.setAttribute('fill','#ffffff'); pat.appendChild(bg);
   const lines=NS('path'); lines.setAttribute('d','M0,0 L0,8 M4,0 L4,8'); lines.setAttribute('stroke','rgba(0,0,0,0.55)'); lines.setAttribute('stroke-width','1.4'); pat.appendChild(lines);
-
-  defs.appendChild(pat);
-  svg.appendChild(defs);
+  defs.appendChild(pat); svg.appendChild(defs);
 }
-function addFullLengthBalconies(x,y,z,w,d,status,unitId){
+function addFullLengthBalconies(x,y,z,w,d,status,key){
   const bw=35, bh=4;
-  const colors=safeColors(status);
-  const leftFull  = makeIsoPrismRaw(x-bw-1, y, z, bw, d, bh, colors, 'balcony', unitId); // FRONT
-  const rightFull = makeIsoPrismRaw(x+w+1, y, z, bw, d, bh, colors, 'balcony', unitId); // REAR
+  const colors=col(status);
+  const leftFull  = makeIsoPrismRaw(x-bw-1, y, z, bw, d, bh, colors, 'balcony', key); // FRONT
+  const rightFull = makeIsoPrismRaw(x+w+1, y, z, bw, d, bh, colors, 'balcony', key); // REAR
   return [leftFull, rightFull];
 }
 
+/* ======== BUILD SVG (ordering by level + unit) ======== */
 function buildSvg(){
   const svg=document.getElementById('buildingSvg');
   svg.innerHTML='';
   addDefs(svg);
-
   const scene=NS('g'); scene.setAttribute('id','scene'); svg.appendChild(scene);
 
   const W25=64, D25=64;      // 2.5 Zimmer
   const W15=W25, D15=D25/2;  // 1.5 Zimmer
-  const H=26;
-  const gapY=8;
-  const floorGapZ=126;
+  const H=26; const gapY=8; const floorGapZ=126;
   const originX=0, originY=0;
 
   [1,2,3].forEach(level=>{
-    const units=DATA.filter(d=>d.level===level);
+    const units=DATA.filter(d=>d.level===level).sort((a,b)=>a.unit-b.unit); // 1..N right->left
     const x=originX;
     const z=(level-1)*(H + floorGapZ);
     let y=originY;
-    let seqIndex=0;
 
-    units.forEach(u=>{
+    units.forEach((u,idx)=>{
       const is25 = (u.rooms===2.5);
       const w = is25 ? W25 : W15;
       const d = is25 ? D25 : D15;
 
-      const block=makeIsoBlock(x,y,z,w,d,H,safeColors(u.status),u.id);
+      const block=makeIsoBlock(x,y,z,w,d,H,col(u.status),u.key);
       scene.appendChild(block);
 
       if(level===1 && is25){
         const bw=35, bh=4, gap=4; const segD=(d-gap)/2;
-        const colors=safeColors(u.status);
+        const colors=col(u.status);
         const outline=()=>({top:'none',front:'none',side:'none'});
-
-        const left1 = makeIsoPrismRaw(x-bw-1, y, z, bw, segD, bh, outline(), 'balcony', u.id);
-        const left2 = makeIsoPrismRaw(x-bw-1, y+segD+gap, z, bw, segD, bh, colors,   'balcony', u.id);
+        const left1 = makeIsoPrismRaw(x-bw-1, y, z, bw, segD, bh, outline(), 'balcony', u.key);
+        const left2 = makeIsoPrismRaw(x-bw-1, y+segD+gap, z, bw, segD, bh, colors,   'balcony', u.key);
 
         let right1Colors = colors;
         let right2Colors = outline();
         let right2Extra  = null;
 
         if(u.id==="1.2"){
-          right1Colors = {top:stairsPatternFill,front:stairsPatternFill,side:stairsPatternFill};
+          right1Colors = {top:STAIRS_FILL,front:STAIRS_FILL,side:STAIRS_FILL};
           right2Colors = {top:FILL_DARK15,front:FILL_DARK15,side:FILL_DARK15};
           right2Extra  = (g)=>addInsetOnTop(g, x+w+1, y+segD+gap, z, bw, segD, 6, 'rgba(255,255,255,0.65)', 'rgba(0,0,0,0.45)');
         }
         if(u.id==="1.7"){
-          right2Colors = {top:stairsPatternFill,front:stairsPatternFill,side:stairsPatternFill};
+          right2Colors = {top:STAIRS_FILL,front:STAIRS_FILL,side:STAIRS_FILL};
         }
 
-        const right1= makeIsoPrismRaw(x+w+1,  y,            z, bw, segD, bh, right1Colors, 'balcony', u.id);
-        const right2= makeIsoPrismRaw(x+w+1,  y+segD+gap,   z, bw, segD, bh, right2Colors, 'balcony', u.id);
+        const right1= makeIsoPrismRaw(x+w+1,  y,            z, bw, segD, bh, right1Colors, 'balcony', u.key);
+        const right2= makeIsoPrismRaw(x+w+1,  y+segD+gap,   z, bw, segD, bh, right2Colors, 'balcony', u.key);
         if(right2Extra) right2Extra(right2);
-
         [left1,left2,right1,right2].forEach(p=>scene.insertBefore(p, block));
       }
 
       if(level===2){
-        const [frontBalcony, rearBalcony] = addFullLengthBalconies(x,y,z,w,d,u.status,u.id);
-        const keepFront = (seqIndex % 2 === 1); // 2.2, 2.4, ...
-        const keepRear  = (seqIndex % 2 === 0); // 2.1, 2.3, ...
-
-        if(u.id === "2.14"){
-          const bw=35, bh=4;
-          const rearStairs = makeIsoPrismRaw(x+w+1, y, z, bw, d, bh,
-            {top:stairsPatternFill,front:stairsPatternFill,side:stairsPatternFill}, 'balcony', u.id);
-          scene.insertBefore(rearStairs, block);
-        } else {
-          if(keepFront) scene.insertBefore(frontBalcony, block);
-          if(keepRear)  scene.insertBefore(rearBalcony,  block);
-        }
+        const [frontBalcony, rearBalcony] = addFullLengthBalconies(x,y,z,w,d,u.status,u.key);
+        const keepFront = (idx % 2 === 1); // 2.2, 2.4, ...
+        const keepRear  = (idx % 2 === 0); // 2.1, 2.3, ...
+        if(keepFront) scene.insertBefore(frontBalcony, block);
+        if(keepRear)  scene.insertBefore(rearBalcony,  block);
       }
 
       if(level===3 && is25){
         const bw=35, bh=4, gap=4; const segD=(d-gap)/2;
-        const colors=safeColors(u.status);
+        const colors=col(u.status);
         if(u.id==="3.2"){
           const rearLeft  = makeIsoPrismRaw(x+w+1, y, z, bw, segD, bh,
-            {top:stairsPatternFill,front:stairsPatternFill,side:stairsPatternFill}, 'balcony', u.id);
+            {top:STAIRS_FILL,front:STAIRS_FILL,side:STAIRS_FILL}, 'balcony', u.key);
           const rearRight = makeIsoPrismRaw(x+w+1, y+segD+gap, z, bw, segD, bh,
-            {top:FILL_DARK15,front:FILL_DARK15,side:FILL_DARK15}, 'balcony', u.id);
+            {top:FILL_DARK15,front:FILL_DARK15,side:FILL_DARK15}, 'balcony', u.key);
           addInsetOnTop(rearRight, x+w+1, y+segD+gap, z, bw, segD, 6, 'rgba(255,255,255,0.65)', 'rgba(0,0,0,0.45)');
           scene.insertBefore(rearLeft,  block);
           scene.insertBefore(rearRight, block);
-          const left2 = makeIsoPrismRaw(x-bw-1, y+segD+gap, z, bw, segD, bh, colors, 'balcony', u.id);
+          const left2 = makeIsoPrismRaw(x-bw-1, y+segD+gap, z, bw, segD, bh, colors, 'balcony', u.key);
           scene.insertBefore(left2, block);
         }else{
-          const left2 = makeIsoPrismRaw(x-bw-1, y+segD+gap, z, bw, segD, bh, colors, 'balcony', u.id);
-          const right1= makeIsoPrismRaw(x+w+1,  y,           z, bw, segD, bh, colors, 'balcony', u.id);
+          const left2 = makeIsoPrismRaw(x-bw-1, y+segD+gap, z, bw, segD, bh, colors, 'balcony', u.key);
+          const right1= makeIsoPrismRaw(x+w+1,  y,           z, bw, segD, bh, colors, 'balcony', u.key);
           [left2,right1].forEach(p=>scene.insertBefore(p, block));
         }
       }
 
-      y += d + gapY;
-      seqIndex++;
+      y += d + gapY; // advance along the row
     });
   });
 
   // Fit to viewBox
-  const vb=document.getElementById('buildingSvg').viewBox.baseVal; const margin=40;
+  const vb=svg.viewBox.baseVal; const margin=40;
   const bbox=document.getElementById('scene').getBBox();
   const scale=Math.min((vb.width-2*margin)/bbox.width, (vb.height-2*margin)/bbox.height);
   const tx=(vb.width - bbox.width*scale)/2 - bbox.x*scale;
@@ -335,61 +325,63 @@ function buildSvg(){
   document.getElementById('scene').setAttribute('transform',`translate(${tx},${ty}) scale(${scale})`);
 }
 
-/* ========= INTERACTIVITY ========= */
+/* ======== INTERACTIVITY (key-based) ======== */
 function setSvgInteractivity(){
   const svg=document.getElementById('buildingSvg');
-  svg.querySelectorAll('[data-unit]').forEach(el=>{
-    const id=el.getAttribute('data-unit');
+  svg.querySelectorAll('[data-key]').forEach(el=>{
+    const key=el.getAttribute('data-key');
     el.style.cursor='pointer';
-    el.addEventListener('mouseenter',()=>highlight(id,true));
-    el.addEventListener('mouseleave',()=>highlight(id,false));
-    el.addEventListener('click',()=>openFactsheet(id));
+    el.addEventListener('mouseenter',()=>highlight(key,true));
+    el.addEventListener('mouseleave',()=>highlight(key,false));
+    el.addEventListener('click',()=>openFactsheet(key));
   });
 }
-function highlight(id,on){
-  document.querySelectorAll(`#buildingSvg [data-unit="${id}"]`).forEach(el=>{
+function highlight(key,on){
+  document.querySelectorAll(`#buildingSvg [data-key="${key}"]`).forEach(el=>{
     if(on) el.classList.add('highlight'); else el.classList.remove('highlight');
   });
-  document.querySelectorAll(`#tbody tr`).forEach(tr=>{
-    if(tr.getAttribute('data-unit')===id){
-      if(on) tr.classList.add('row-highlight'); else tr.classList.remove('row-highlight');
-    }
-  });
+  const tr=document.querySelector(`#tbody tr[data-key="${key}"]`);
+  if(tr){ if(on) tr.classList.add('row-highlight'); else tr.classList.remove('row-highlight'); }
 }
-function openFactsheet(id){
-  const unit = DATA.find(d=>d.id===id);
+function openFactsheet(key){
+  const unit = DATA.find(d=>d.key===key);
   if(unit){
-    const tr=document.querySelector(`#tbody tr[data-unit="${id}"]`);
+    const tr=document.querySelector(`#tbody tr[data-key="${key}"]`);
     if(tr){ tr.scrollIntoView({behavior:'smooth', block:'center'}); tr.classList.add('row-flash'); setTimeout(()=>tr.classList.remove('row-flash'), 1200); }
     if(unit.factsheet){ window.open(unit.factsheet,'_blank','noopener'); }
   }
 }
 
-/* ========= LOAD SHEET, THEN RENDER ========= */
-async function loadFromSheet(){
+/* ======== LOAD FROM SHEET, THEN RENDER ======== */
+async function init(){
   try{
     const res = await fetch(SHEET_CSV + "&_cb=" + Date.now(), { cache: "no-store" });
-    if(!res.ok) throw new Error("CSV fetch failed: " + res.status);
     const txt = await res.text();
     const rows = parseCsv(txt);
     if(rows.length) DATA = rows;
   }catch(e){
-    console.warn("Using fallback DATA due to sheet error:", e);
+    console.warn("Sheet error; nothing drawn because we’re now sheet-driven. Check CSV/permissions.", e);
+    DATA = []; // no fallback here to avoid mixing old & new schemas
   }
-  populateSelects();
+  // Populate filters from DATA
+  if(!DATA.length){ return; }
+  const floors=[...new Set(DATA.map(d=>d.level))].sort((a,b)=>a-b);
+  const rooms=[...new Set(DATA.map(d=>d.rooms))].sort((a,b)=>a-b);
+  document.getElementById('floorSel').innerHTML =
+    '<option value="all">Alle</option>' + floors.map(f=>`<option value="${f}">${f}</option>`).join('');
+  document.getElementById('roomsSel').innerHTML =
+    '<option value="all">Alle</option>' + rooms.map(r=>`<option value="${r}">${r}</option>`).join('');
+
   applyFilters();
   buildSvg();
   setSvgInteractivity();
 }
 
-/* ========= INIT ========= */
-document.getElementById('floorSel').innerHTML = '<option value="all">Alle</option>';
-document.getElementById('roomsSel').innerHTML = '<option value="all">Alle</option>';
 document.getElementById('statusSel').addEventListener('change',()=>{applyFilters(); buildSvg(); setSvgInteractivity();});
 document.getElementById('floorSel').addEventListener('change',()=>{applyFilters(); buildSvg(); setSvgInteractivity();});
 document.getElementById('roomsSel').addEventListener('change',()=>{applyFilters(); buildSvg(); setSvgInteractivity();});
 
-loadFromSheet();
+init();
 </script>
 </body>
 </html>
