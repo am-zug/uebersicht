@@ -13,7 +13,7 @@
     select{width:100%;padding:6px 8px;border-radius:6px;border:1px solid #cfd7dd}
     .grid{display:grid;grid-template-columns:1fr 2fr;gap:18px;align-items:start}
     table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden}
-    thead{background:#d2bd76;color:#000}          /* header color per request */
+    thead{background:#d2bd76;color:#000}
     th,td{padding:8px 10px;font-size:14px;border-bottom:1px solid #e0e6eb;text-align:left}
     tr:hover, tr.active{background:#f8fbfd}
     .map-container{background:#fff;border-radius:12px;border:1px solid #dfe6eb;padding:10px;display:flex;align-items:center;justify-content:center;height:100%}
@@ -32,7 +32,7 @@
     .row-flash{animation:flash 1.2s ease}
     @keyframes flash{0%{background:#fff3c4} 100%{background:transparent}}
 
-    /* Keep subtle outlines on ALL balconies */
+    /* Subtle outlines on ALL balconies */
     .balcony polygon{stroke:rgba(0,0,0,0.1); stroke-width:2}
     .balcony.highlight polygon{filter:saturate(1.8) brightness(1.06)}
   </style>
@@ -90,44 +90,59 @@ const DEFAULT_FACTSHEET = {
   "1.5": "https://am-zug.ch/wp-content/uploads/2024/11/1.5-zimmer-wohnung.pdf"
 };
 
-/* ===== 2) GOOGLE SHEET SYNC (status + factsheet; MERGED into DATA) ===== */
+/* ===== 2) GOOGLE SHEET SYNC ===== */
 const STATUS_CSV = "https://docs.google.com/spreadsheets/d/1-oeqRNM-CxGaILY7FNWaNMgC9ccBWDZDwU5l0Eic0pk/export?format=csv&gid=0";
+
+/* Normalise IDs in case the sheet formats some as 1.10, 1.20, etc.
+   Floors 1 & 3: strip trailing zeros in the fractional part (1.10 -> 1.1).
+   Floor 2 keeps 2.10, 2.11 ... unchanged. */
+function normalizeId(raw){
+  let s = String(raw||"").trim();
+  if(!/^\d+\.\d+$/.test(s)) return s;
+  let [fl, frac] = s.split(".");
+  if(fl==="1"||fl==="3"){
+    while(frac.length>1 && frac.endsWith("0")) frac = frac.slice(0,-1);
+    return `${fl}.${frac}`;
+  }
+  return `${fl}.${frac}`;
+}
 
 function parseStatusCsv(text){
   const lines = text.trim().split(/\r?\n/);
   if(!lines.length) return [];
-  const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+  const headers = lines[0].split(",").map(h=>h.trim().toLowerCase());
   const rows = lines.slice(1).filter(Boolean);
-  return rows.map(r => {
-    const vals = r.split(',').map(s => (s||'').trim());
-    const obj = {};
-    headers.forEach((h,i)=> obj[h] = vals[i] || "");
-    return { id: obj.id, status: (obj.status||'').toLowerCase(), factsheet: obj.factsheet||"" };
+  return rows.map(r=>{
+    const vals=r.split(",").map(s=>(s||"").trim());
+    const obj={}; headers.forEach((h,i)=>obj[h]=vals[i]||"");
+    return { id: normalizeId(obj.id), status:(obj.status||"").toLowerCase(), factsheet:obj.factsheet||"" };
   });
 }
 
 async function syncStatusesFromSheet(){
   try{
-    const res = await fetch(STATUS_CSV, { cache: 'no-store' });
+    const url = STATUS_CSV + "&_cb=" + Date.now(); // cache-bust
+    const res = await fetch(url, { cache: "no-store" });
+    if(!res.ok) throw new Error("CSV fetch failed: " + res.status);
     const txt = await res.text();
     const rows = parseStatusCsv(txt);
 
-    const byId = new Map(DATA.map(d => [d.id, d]));
-    rows.forEach(({id, status, factsheet}) => {
+    const byId = new Map(DATA.map(d=>[d.id,d]));
+    rows.forEach(({id,status,factsheet})=>{
       const unit = byId.get(id);
       if(unit){
         if(status) unit.status = status;
         unit.factsheet = factsheet || DEFAULT_FACTSHEET[String(unit.rooms)];
       }
     });
-    // Ensure fallbacks for any not in sheet
+    // Fall back factsheets for untouched units
     DATA.forEach(u=>{ if(!u.factsheet) u.factsheet = DEFAULT_FACTSHEET[String(u.rooms)] || ""; });
 
     applyFilters();
     buildSvg();
     setSvgInteractivity();
   }catch(e){
-    console.warn('Status sync failed:', e);
+    console.warn("Status sync failed:", e);
   }
 }
 
@@ -217,12 +232,12 @@ function makeIsoPrismRaw(x,y,z,w,d,h,colors, cssClass, unitId){
   return g;
 }
 
-/* Balconies helpers */
+/* Helper for full-length balconies (left=front, right=rear) */
 function addFullLengthBalconies(x,y,z,w,d,status,unitId){
   const bw=35, bh=4;
   const colors=statusColors[status];
-  const leftFull  = makeIsoPrismRaw(x-bw-1, y, z, bw, d, bh, colors, 'balcony', unitId); // LEFT = “front” side (as before)
-  const rightFull = makeIsoPrismRaw(x+w+1, y, z, bw, d, bh, colors, 'balcony', unitId); // RIGHT = “rear” side
+  const leftFull  = makeIsoPrismRaw(x-bw-1, y, z, bw, d, bh, colors, 'balcony', unitId); // FRONT
+  const rightFull = makeIsoPrismRaw(x+w+1, y, z, bw, d, bh, colors, 'balcony', unitId); // REAR
   return [leftFull, rightFull];
 }
 
@@ -258,38 +273,31 @@ function buildSvg(){
       scene.appendChild(block);
 
       if(level===1 && is25){
-        // Build split balconies explicitly, so we can drop the "rear" for 1.2.
+        // Split balconies; drop rear (right) for 1.2
         const bw=35, bh=4, gap=4; const segD=(d-gap)/2;
         const colors=statusColors[u.status];
         const outline=()=>({top:'none',front:'none',side:'none'});
         const left1 = makeIsoPrismRaw(x-bw-1, y, z, bw, segD, bh, outline(), 'balcony', u.id);
         const left2 = makeIsoPrismRaw(x-bw-1, y+segD+gap, z, bw, segD, bh, colors,   'balcony', u.id);
-        const right1= makeIsoPrismRaw(x+w+1,  y, z, bw, segD, bh, colors,   'balcony', u.id); // REAR (filled half)
+        const right1= makeIsoPrismRaw(x+w+1,  y, z, bw, segD, bh, colors,   'balcony', u.id); // REAR
         const right2= makeIsoPrismRaw(x+w+1,  y+segD+gap, z, bw, segD, bh, outline(), 'balcony', u.id);
-        // For 1.2 remove REAR (right side)
-        const dropRear = (u.id === "1.2");
         [left1,left2].forEach(p=>scene.insertBefore(p, block));
-        if(!dropRear){ [right1,right2].forEach(p=>scene.insertBefore(p, block)); }
+        if(u.id!=="1.2"){ [right1,right2].forEach(p=>scene.insertBefore(p, block)); }
       }
 
       if(level===2){
-        // Alternation must START with REAR (right) at 2.1
+        // Start with REAR at 2.1; then front/rear alternating
         const [frontBalcony, rearBalcony] = addFullLengthBalconies(x,y,z,w,d,u.status,u.id);
-        // seqIndex: 0 -> 2.1 -> REAR; 1 -> 2.2 -> FRONT; 2 -> 2.3 -> REAR; ...
-        const keepFront = (seqIndex % 2 === 1);
-        const keepRear  = (seqIndex % 2 === 0);
-
-        // Special: 2.3 should have NO balcony at all
-        if(u.id === "2.3"){
-          // do nothing (skip both)
-        }else{
-          if(keepFront){ scene.insertBefore(frontBalcony, block); }
-          if(keepRear){  scene.insertBefore(rearBalcony,  block); }
+        const keepFront = (seqIndex % 2 === 1); // 2.2, 2.4, ...
+        const keepRear  = (seqIndex % 2 === 0); // 2.1, 2.3, ...
+        if(u.id !== "2.3"){          // 2.3 no balcony at all
+          if(keepFront) scene.insertBefore(frontBalcony, block);
+          if(keepRear)  scene.insertBefore(rearBalcony,  block);
         }
       }
 
       if(level===3 && is25){
-        // Like before: only the two filled halves (rear filled + front filled halves)
+        // Filled halves (like earlier)
         const bw=35, bh=4, gap=4; const segD=(d-gap)/2;
         const colors=statusColors[u.status];
         const left2 = makeIsoPrismRaw(x-bw-1, y+segD+gap, z, bw, segD, bh, colors, 'balcony', u.id);
@@ -316,7 +324,7 @@ function setSvgInteractivity(){
   const svg=document.getElementById('buildingSvg');
   svg.querySelectorAll('[data-unit]').forEach(el=>{
     const id=el.getAttribute('data-unit');
-    el.style.cursor = 'pointer';
+    el.style.cursor='pointer';
     el.addEventListener('mouseenter',()=>highlight(id,true));
     el.addEventListener('mouseleave',()=>highlight(id,false));
     el.addEventListener('click',()=>openFactsheet(id));
@@ -337,7 +345,7 @@ function highlight(id,on){
 function openFactsheet(id){
   const unit = DATA.find(d=>d.id===id);
   if(unit){
-    const tr = document.querySelector(`#tbody tr[data-unit="${id}"]`);
+    const tr=document.querySelector(`#tbody tr[data-unit="${id}"]`);
     if(tr){ tr.scrollIntoView({behavior:'smooth', block:'center'}); tr.classList.add('row-flash'); setTimeout(()=>tr.classList.remove('row-flash'), 1200); }
     if(unit.factsheet){ window.open(unit.factsheet,'_blank','noopener'); }
   }
