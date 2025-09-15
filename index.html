@@ -78,79 +78,63 @@
 </div>
 
 <script>
-/* ===== 1) BASE DATA (fallback) ===== */
-const DATA=[];
-for(let i=1;i<=7;i++){DATA.push({id:`1.${i}`,rooms:2.5,level:1,m2:56,status:(i%3===0?"reserved":"available")});}
-for(let i=1;i<=14;i++){DATA.push({id:`2.${i}`,rooms:1.5,level:2,m2:32.3,status:(i%5===0?"rented":"available")});}
-for(let i=1;i<=3;i++){DATA.push({id:`3.${i}`,rooms:2.5,level:3,m2:56,status:"available"});}
+/* ========= SHEET CONFIG ========= */
+const SHEET_CSV = "https://docs.google.com/spreadsheets/d/1-oeqRNM-CxGaILY7FNWaNMgC9ccBWDZDwU5l0Eic0pk/export?format=csv&gid=0";
 
-/* Factsheet fallback by room type */
+/* ========= FALLBACK DATA ========= */
+let DATA = [];
+for(let i=1;i<=7;i++){DATA.push({id:`1.${i}`,rooms:2.5,level:1,m2:56,status:(i%3===0?"reserved":"available"),factsheet:""});}
+for(let i=1;i<=14;i++){DATA.push({id:`2.${i}`,rooms:1.5,level:2,m2:32.3,status:(i%5===0?"rented":"available"),factsheet:""});}
+for(let i=1;i<=3;i++){DATA.push({id:`3.${i}`,rooms:2.5,level:3,m2:56,status:"available",factsheet:""});}
+
+/* Default factsheets if the sheet cell is empty */
 const DEFAULT_FACTSHEET = {
   "2.5": "https://am-zug.ch/wp-content/uploads/2024/11/2.5-zimmer-wohnung-1.pdf",
   "1.5": "https://am-zug.ch/wp-content/uploads/2024/11/1.5-zimmer-wohnung.pdf"
 };
 
-/* ===== 2) GOOGLE SHEET SYNC ===== */
-const STATUS_CSV = "https://docs.google.com/spreadsheets/d/1-oeqRNM-CxGaILY7FNWaNMgC9ccBWDZDwU5l0Eic0pk/export?format=csv&gid=0";
-
-function normalizeId(raw){
-  let s = String(raw||"").trim();
-  if(!/^\d+\.\d+$/.test(s)) return s;
-  let [fl, frac] = s.split(".");
-  if(fl==="1"||fl==="3"){
-    while(frac.length>1 && frac.endsWith("0")) frac = frac.slice(0,-1);
-    return `${fl}.${frac}`;
-  }
-  return `${fl}.${frac}`;
+/* ========= HELPERS ========= */
+function normalizeId(raw){ return String(raw||"").trim(); }
+function normalizeStatus(raw){
+  const t = String(raw||"").trim().toLowerCase();
+  if(['available','verfügbar','verfuegbar','frei'].includes(t)) return 'available';
+  if(['reserved','reserviert'].includes(t)) return 'reserved';
+  if(['rented','vermietet','belegt'].includes(t)) return 'rented';
+  return 'available';
 }
-function parseStatusCsv(text){
+function num(x){ const n = Number(String(x||"").replace(',','.')); return isNaN(n) ? null : n; }
+function parseCsv(text){
   const lines = text.trim().split(/\r?\n/);
   if(!lines.length) return [];
   const headers = lines[0].split(",").map(h=>h.trim().toLowerCase());
-  const rows = lines.slice(1).filter(Boolean);
-  return rows.map(r=>{
-    const vals=r.split(",").map(s=>(s||"").trim());
-    const obj={}; headers.forEach((h,i)=>obj[h]=vals[i]||"");
-    return { id: normalizeId(obj.id), status:(obj.status||"").toLowerCase(), factsheet:obj.factsheet||"" };
-  });
-}
-async function syncStatusesFromSheet(){
-  try{
-    const url = STATUS_CSV + "&_cb=" + Date.now();
-    const res = await fetch(url, { cache: "no-store" });
-    if(!res.ok) throw new Error("CSV fetch failed: " + res.status);
-    const txt = await res.text();
-    const rows = parseStatusCsv(txt);
-
-    const byId = new Map(DATA.map(d=>[d.id,d]));
-    rows.forEach(({id,status,factsheet})=>{
-      const unit = byId.get(id);
-      if(unit){
-        if(status) unit.status = status;
-        unit.factsheet = factsheet || DEFAULT_FACTSHEET[String(unit.rooms)];
-      }
-    });
-    DATA.forEach(u=>{ if(!u.factsheet) u.factsheet = DEFAULT_FACTSHEET[String(u.rooms)] || ""; });
-
-    applyFilters();
-    buildSvg();
-    setSvgInteractivity();
-  }catch(e){
-    console.warn("Status sync failed:", e);
-  }
+  return lines.slice(1).filter(Boolean).map(row=>{
+    const vals=row.split(",").map(v=>(v||"").trim());
+    const o={}; headers.forEach((h,i)=>o[h]=vals[i]||"");
+    const rooms = num(o.rooms);
+    const level = num(o.level);
+    const m2    = num(o.m2);
+    return {
+      id: normalizeId(o.id),
+      rooms,
+      level,
+      m2,
+      status: normalizeStatus(o.status),
+      factsheet: o.factsheet || (rooms ? DEFAULT_FACTSHEET[String(rooms)] || "" : "")
+    };
+  }).filter(u=>u.id && u.rooms && u.level);
 }
 
-/* ===== 3) COLORS ===== */
+/* ========= COLORS ========= */
 const statusColors={
   available:{top:'#dff2e7',front:'#cce6d6',side:'#c2dfcf'},
   reserved:{top:'#fff3db',front:'#f0e1bf',side:'#e8d7ad'},
   rented:{top:'#f9e0e0',front:'#eac9c9',side:'#e2bcbc'}
 };
-/* special fills (15% black now) */
-const FILL_DARK15 = 'rgba(0,0,0,0.15)';
-const stairsPatternFill = 'url(#stairsPattern)';
+function safeColors(status){ return statusColors[normalizeStatus(status)] || statusColors.available; }
+const FILL_DARK15 = 'rgba(0,0,0,0.15)';        // lift
+const stairsPatternFill = 'url(#stairsPattern)';// WHITE stair pattern
 
-/* ===== 4) TABLE & FILTERS ===== */
+/* ========= TABLE & FILTERS ========= */
 function renderTable(list){
   const tbody=document.getElementById('tbody');
   tbody.innerHTML=list.map(d=>`
@@ -158,11 +142,10 @@ function renderTable(list){
       <td>${d.id}</td>
       <td>${d.rooms}</td>
       <td>${d.level}</td>
-      <td>${d.m2}</td>
-      <td><span class='dot ${d.status}' title='${d.status}'></span></td>
+      <td>${d.m2 ?? ""}</td>
+      <td><span class='dot ${normalizeStatus(d.status)}' title='${normalizeStatus(d.status)}'></span></td>
       <td>${d.factsheet ? `<a href="${d.factsheet}" target="_blank" rel="noopener">Factsheet</a>` : '–'}</td>
     </tr>`).join('');
-
   tbody.querySelectorAll('tr').forEach(tr=>{
     const id=tr.getAttribute('data-unit');
     tr.addEventListener('mouseenter',()=>highlight(id,true));
@@ -174,109 +157,75 @@ function applyFilters(){
   const fFloor=document.getElementById('floorSel').value;
   const fStatus=document.getElementById('statusSel').value;
   const fRooms=document.getElementById('roomsSel').value;
-  const list=DATA.filter(d=>(fFloor==='all'||d.level==fFloor)&&(fStatus==='all'||d.status===fStatus)&&(fRooms==='all'||d.rooms==fRooms));
+  const list=DATA.filter(d=>
+    (fFloor==='all'||String(d.level)===String(fFloor)) &&
+    (fStatus==='all'||normalizeStatus(d.status)===fStatus) &&
+    (fRooms==='all'||String(d.rooms)===String(fRooms))
+  );
   renderTable(list);
 }
-/* Dropdowns */
-const floorSel=document.getElementById('floorSel');
-const roomsSel=document.getElementById('roomsSel');
-const floors=[...new Set(DATA.map(d=>d.level))];
-const rooms=[...new Set(DATA.map(d=>d.rooms))];
-floorSel.innerHTML='<option value="all">Alle</option>'+floors.map(f=>`<option value="${f}">${f}</option>`).join('');
-roomsSel.innerHTML='<option value="all">Alle</option>'+rooms.map(r=>`<option value="${r}">${r}</option>`).join('');
-document.getElementById('floorSel').addEventListener('change',()=>{applyFilters(); buildSvg(); setSvgInteractivity();});
-document.getElementById('statusSel').addEventListener('change',()=>{applyFilters(); buildSvg(); setSvgInteractivity();});
-document.getElementById('roomsSel').addEventListener('change',()=>{applyFilters(); buildSvg(); setSvgInteractivity();});
+function populateSelects(){
+  const floors=[...new Set(DATA.map(d=>d.level))].sort((a,b)=>a-b);
+  const rooms=[...new Set(DATA.map(d=>d.rooms))].sort((a,b)=>a-b);
+  document.getElementById('floorSel').innerHTML =
+    '<option value="all">Alle</option>' + floors.map(f=>`<option value="${f}">${f}</option>`).join('');
+  document.getElementById('roomsSel').innerHTML =
+    '<option value="all">Alle</option>' + rooms.map(r=>`<option value="${r}">${r}</option>`).join('');
+}
 
-/* ===== 5) ISOMETRIC PROJECTION ===== */
-const COS=Math.cos(Math.PI/6);
-const SIN=Math.sin(Math.PI/6);
+/* ========= ISOMETRIC ========= */
+const COS=Math.cos(Math.PI/6), SIN=Math.sin(Math.PI/6);
 function isoX(x,y,z){return (x + y)*COS;}
 function isoY(x,y,z){return (y - x)*SIN - z;}
-
+function NS(tag){ return document.createElementNS('http://www.w3.org/2000/svg',tag); }
+function poly(pts,fill){
+  const p=NS('polygon'); p.setAttribute('points', pts.map(([X,Y,Z])=>`${isoX(X,Y,Z)} ${isoY(X,Y,Z)}`).join(' '));
+  p.setAttribute('fill', fill==='none'?'none':fill); return p;
+}
 function makeIsoBlock(x,y,z,w,d,h,colors,unitId){
-  const g=document.createElementNS('http://www.w3.org/2000/svg','g');
-  g.setAttribute('class','unit-block');
-  if(unitId) g.setAttribute('data-unit',unitId);
-  const top=`${isoX(x,y,z)} ${isoY(x,y,z)} ${isoX(x+w,y,z)} ${isoY(x+w,y,z)} ${isoX(x+w,y+d,z)} ${isoY(x+w,y+d,z)} ${isoX(x,y+d,z)} ${isoY(x,y+d,z)}`;
-  const pTop=document.createElementNS('http://www.w3.org/2000/svg','polygon'); pTop.setAttribute('points',top); pTop.setAttribute('fill',colors.top);
-  const front=`${isoX(x,y,z)} ${isoY(x,y,z)} ${isoX(x+w,y,z)} ${isoY(x+w,y,z)} ${isoX(x+w,y,z+h)} ${isoY(x+w,y,z+h)} ${isoX(x,y,z+h)} ${isoY(x,y,z+h)}`;
-  const pFront=document.createElementNS('http://www.w3.org/2000/svg','polygon'); pFront.setAttribute('points',front); pFront.setAttribute('fill',colors.front);
-  const side=`${isoX(x+w,y,z)} ${isoY(x+w,y,z)} ${isoX(x+w,y+d,z)} ${isoY(x+w,y+d,z)} ${isoX(x+w,y+d,z+h)} ${isoY(x+w,y+d,z+h)} ${isoX(x+w,y,z+h)} ${isoY(x+w,y,z+h)}`;
-  const pSide=document.createElementNS('http://www.w3.org/2000/svg','polygon'); pSide.setAttribute('points',side); pSide.setAttribute('fill',colors.side);
-  g.appendChild(pTop); g.appendChild(pFront); g.appendChild(pSide);
-  return g;
+  const g=NS('g'); g.setAttribute('class','unit-block'); g.setAttribute('data-unit',unitId);
+  const pTop   = poly([[x,y,z],[x+w,y,z],[x+w,y+d,z],[x,y,d+z]], colors.top);
+  const pFront = poly([[x,y,z],[x+w,y,z],[x+w,y,z+h],[x,y,z+h]], colors.front);
+  const pSide  = poly([[x+w,y,z],[x+w,y+d,z],[x+w,y+d,z+h],[x+w,y,z+h]], colors.side);
+  [pTop,pFront,pSide].forEach(p=>g.appendChild(p)); return g;
 }
 function makeIsoPrismRaw(x,y,z,w,d,h,colors, cssClass, unitId){
-  const g=document.createElementNS('http://www.w3.org/2000/svg','g');
-  if(cssClass) g.setAttribute('class',cssClass);
-  if(unitId) g.setAttribute('data-unit',unitId);
-  const topPts=`${isoX(x,y,z)} ${isoY(x,y,z)} ${isoX(x+w,y,z)} ${isoY(x+w,y,z)} ${isoX(x+w,y+d,z)} ${isoY(x+w,y+d,z)} ${isoX(x,y+d,z)} ${isoY(x,y+d,z)}`;
-  const fPts=`${isoX(x,y,z)} ${isoY(x,y,z)} ${isoX(x+w,y,z)} ${isoY(x+w,y,z)} ${isoX(x+w,y,z+h)} ${isoY(x+w,y,z+h)} ${isoX(x,y,z+h)} ${isoY(x,y,z+h)}`;
-  const sPts=`${isoX(x+w,y,z)} ${isoY(x+w,y,z)} ${isoX(x+w,y+d,z)} ${isoY(x+w,y+d,z)} ${isoX(x+w,y+d,z+h)} ${isoY(x+w,y+d,z+h)} ${isoX(x+w,y,z+h)} ${isoY(x+w,y,z+h)}`;
-  const pTop=document.createElementNS('http://www.w3.org/2000/svg','polygon'); pTop.setAttribute('points',topPts);
-  const pFront=document.createElementNS('http://www.w3.org/2000/svg','polygon'); pFront.setAttribute('points',fPts);
-  const pSide=document.createElementNS('http://www.w3.org/2000/svg','polygon'); pSide.setAttribute('points',sPts);
-  [pTop,pFront,pSide].forEach((p,i)=>{
-    const key=i===0?'top':(i===1?'front':'side');
-    const fill=colors[key];
-    if(fill && fill!=='none'){ p.setAttribute('fill',fill); } else { p.setAttribute('fill','none'); }
-  });
-  g.appendChild(pTop); g.appendChild(pFront); g.appendChild(pSide);
-  return g;
+  const g=NS('g'); if(cssClass) g.setAttribute('class',cssClass); if(unitId) g.setAttribute('data-unit',unitId);
+  const pTop   = poly([[x,y,z],[x+w,y,z],[x+w,y+d,z],[x,y,d+z]], colors.top||'none');
+  const pFront = poly([[x,y,z],[x+w,y,z],[x+w,y,z+h],[x,y,z+h]], colors.front||'none');
+  const pSide  = poly([[x+w,y,z],[x+w,y+d,z],[x+w,y+d,z+h],[x+w,y,z+h]], colors.side||'none');
+  [pTop,pFront,pSide].forEach(p=>g.appendChild(p)); return g;
 }
-
-/* Full-length balconies (left=front, right=rear) */
-function addFullLengthBalconies(x,y,z,w,d,status,unitId){
-  const bw=35, bh=4;
-  const colors=statusColors[status];
-  const leftFull  = makeIsoPrismRaw(x-bw-1, y, z, bw, d, bh, colors, 'balcony', unitId); // FRONT
-  const rightFull = makeIsoPrismRaw(x+w+1, y, z, bw, d, bh, colors, 'balcony', unitId); // REAR
-  return [leftFull, rightFull];
-}
-
-/* Inset helper for the lift symbol (small box on top face) */
 function addInsetOnTop(g, x, y, z, w, d, insetPx, fill, stroke){
-  const top = [
-    [isoX(x,     y,     z), isoY(x,     y,     z)],
-    [isoX(x+w,   y,     z), isoY(x+w,   y,     z)],
-    [isoX(x+w,   y+d,   z), isoY(x+w,   y+d,   z)],
-    [isoX(x,     y+d,   z), isoY(x,     y+d,   z)]
-  ];
-  const cx = (top[0][0]+top[1][0]+top[2][0]+top[3][0])/4;
-  const cy = (top[0][1]+top[1][1]+top[2][1]+top[3][1])/4;
-  const pts = top.map(([X,Y])=>{
-    const vx = X-cx, vy=Y-cy;
-    const len = Math.hypot(vx,vy) || 1;
-    const k = (len-insetPx)/len;
-    return [cx+vx*k, cy+vy*k];
-  });
-  const p = document.createElementNS('http://www.w3.org/2000/svg','polygon');
-  p.setAttribute('points', pts.map(a=>a.join(' ')).join(' '));
+  const top = [[x,y,z],[x+w,y,z],[x+w,y+d,z],[x,y+d,z]].map(([X,Y,Z])=>[isoX(X,Y,Z),isoY(X,Y,Z)]);
+  const cx = top.reduce((s,p)=>s+p[0],0)/4, cy = top.reduce((s,p)=>s+p[1],0)/4;
+  const pts = top.map(([X,Y])=>{const vx=X-cx,vy=Y-cy,len=Math.hypot(vx,vy)||1,k=(len-insetPx)/len;return [cx+vx*k,cy+vy*k];});
+  const p=NS('polygon'); p.setAttribute('points', pts.map(a=>a.join(' ')).join(' '));
   if(fill) p.setAttribute('fill',fill); else p.setAttribute('fill','none');
   if(stroke){ p.setAttribute('stroke',stroke); p.setAttribute('stroke-width','2'); }
   g.appendChild(p);
 }
-
-/* ===== 6) BUILD THE ISOMETRIC SCENE ===== */
 function addDefs(svg){
-  // Striped "stairs" pattern with 15% black background
-  const defs = document.createElementNS('http://www.w3.org/2000/svg','defs');
-  const pat = document.createElementNS('http://www.w3.org/2000/svg','pattern');
+  // WHITE stairs background, vertical lines rotated 30°
+  const defs=NS('defs');
+  const pat=NS('pattern');
   pat.setAttribute('id','stairsPattern');
   pat.setAttribute('patternUnits','userSpaceOnUse');
   pat.setAttribute('width','8'); pat.setAttribute('height','8');
-  const bg = document.createElementNS('http://www.w3.org/2000/svg','rect');
-  bg.setAttribute('x','0'); bg.setAttribute('y','0'); bg.setAttribute('width','8'); bg.setAttribute('height','8');
-  bg.setAttribute('fill', 'rgba(0,0,0,0.15)');
-  pat.appendChild(bg);
-  const line1 = document.createElementNS('http://www.w3.org/2000/svg','path');
-  line1.setAttribute('d','M0,8 L8,0 M-2,6 L2,10 M6,-2 L10,2');
-  line1.setAttribute('stroke','rgba(0,0,0,0.45)');
-  line1.setAttribute('stroke-width','1.6');
-  pat.appendChild(line1);
+  pat.setAttribute('patternTransform','rotate(30)');
+
+  const bg=NS('rect'); bg.setAttribute('x','0'); bg.setAttribute('y','0'); bg.setAttribute('width','8'); bg.setAttribute('height','8'); bg.setAttribute('fill','#ffffff'); pat.appendChild(bg);
+  const lines=NS('path'); lines.setAttribute('d','M0,0 L0,8 M4,0 L4,8'); lines.setAttribute('stroke','rgba(0,0,0,0.55)'); lines.setAttribute('stroke-width','1.4'); pat.appendChild(lines);
+
   defs.appendChild(pat);
   svg.appendChild(defs);
+}
+function addFullLengthBalconies(x,y,z,w,d,status,unitId){
+  const bw=35, bh=4;
+  const colors=safeColors(status);
+  const leftFull  = makeIsoPrismRaw(x-bw-1, y, z, bw, d, bh, colors, 'balcony', unitId); // FRONT
+  const rightFull = makeIsoPrismRaw(x+w+1, y, z, bw, d, bh, colors, 'balcony', unitId); // REAR
+  return [leftFull, rightFull];
 }
 
 function buildSvg(){
@@ -284,16 +233,13 @@ function buildSvg(){
   svg.innerHTML='';
   addDefs(svg);
 
-  const scene=document.createElementNS('http://www.w3.org/2000/svg','g');
-  scene.setAttribute('id','scene');
-  svg.appendChild(scene);
+  const scene=NS('g'); scene.setAttribute('id','scene'); svg.appendChild(scene);
 
   const W25=64, D25=64;      // 2.5 Zimmer
   const W15=W25, D15=D25/2;  // 1.5 Zimmer
   const H=26;
   const gapY=8;
   const floorGapZ=126;
-
   const originX=0, originY=0;
 
   [1,2,3].forEach(level=>{
@@ -308,74 +254,47 @@ function buildSvg(){
       const w = is25 ? W25 : W15;
       const d = is25 ? D25 : D15;
 
-      const block=makeIsoBlock(x,y,z,w,d,H,statusColors[u.status],u.id);
+      const block=makeIsoBlock(x,y,z,w,d,H,safeColors(u.status),u.id);
       scene.appendChild(block);
 
       if(level===1 && is25){
-        // Split balconies; special rear content for 1.2 and 1.7
         const bw=35, bh=4, gap=4; const segD=(d-gap)/2;
-        const colors=statusColors[u.status];
+        const colors=safeColors(u.status);
         const outline=()=>({top:'none',front:'none',side:'none'});
 
         const left1 = makeIsoPrismRaw(x-bw-1, y, z, bw, segD, bh, outline(), 'balcony', u.id);
         const left2 = makeIsoPrismRaw(x-bw-1, y+segD+gap, z, bw, segD, bh, colors,   'balcony', u.id);
 
-        // Default rear halves
-        let right1Colors = colors;                 // filled half
-        let right2Colors = outline();              // outline half
-        let right1Extra  = null;                   // function to add inset if needed
+        let right1Colors = colors;
+        let right2Colors = outline();
         let right2Extra  = null;
 
-        // 1.2: make rear like 3.2 (stairs then lift)
         if(u.id==="1.2"){
           right1Colors = {top:stairsPatternFill,front:stairsPatternFill,side:stairsPatternFill};
           right2Colors = {top:FILL_DARK15,front:FILL_DARK15,side:FILL_DARK15};
           right2Extra  = (g)=>addInsetOnTop(g, x+w+1, y+segD+gap, z, bw, segD, 6, 'rgba(255,255,255,0.65)', 'rgba(0,0,0,0.45)');
         }
-
-        // 1.7: rear outline should symbolize staircase (pattern)
         if(u.id==="1.7"){
           right2Colors = {top:stairsPatternFill,front:stairsPatternFill,side:stairsPatternFill};
         }
 
         const right1= makeIsoPrismRaw(x+w+1,  y,            z, bw, segD, bh, right1Colors, 'balcony', u.id);
         const right2= makeIsoPrismRaw(x+w+1,  y+segD+gap,   z, bw, segD, bh, right2Colors, 'balcony', u.id);
-        if(right1Extra) right1Extra(right1);
         if(right2Extra) right2Extra(right2);
 
-        [left1,left2].forEach(p=>scene.insertBefore(p, block));
-        [right1,right2].forEach(p=>scene.insertBefore(p, block));
+        [left1,left2,right1,right2].forEach(p=>scene.insertBefore(p, block));
       }
 
       if(level===2){
-        // Start with REAR at 2.1; then front/rear alternating
         const [frontBalcony, rearBalcony] = addFullLengthBalconies(x,y,z,w,d,u.status,u.id);
         const keepFront = (seqIndex % 2 === 1); // 2.2, 2.4, ...
         const keepRear  = (seqIndex % 2 === 0); // 2.1, 2.3, ...
 
-        // Special overrides:
         if(u.id === "2.14"){
-          // Always rear staircase
           const bw=35, bh=4;
           const rearStairs = makeIsoPrismRaw(x+w+1, y, z, bw, d, bh,
-            {top:stairsPatternFill,front:stairsPatternFill,side:stairsPatternFill},
-            'balcony', u.id);
+            {top:stairsPatternFill,front:stairsPatternFill,side:stairsPatternFill}, 'balcony', u.id);
           scene.insertBefore(rearStairs, block);
-        } else if(u.id === "2.2"){
-          // Rear staircase
-          const bw=35, bh=4;
-          const rearStairs = makeIsoPrismRaw(x+w+1, y, z, bw, d, bh,
-            {top:stairsPatternFill,front:stairsPatternFill,side:stairsPatternFill},
-            'balcony', u.id);
-          scene.insertBefore(rearStairs, block);
-        } else if(u.id === "2.3"){
-          // Rear lift only
-          const bw=35, bh=4;
-          const rearLift = makeIsoPrismRaw(x+w+1, y, z, bw, d, bh,
-            {top:FILL_DARK15,front:FILL_DARK15,side:FILL_DARK15},
-            'balcony', u.id);
-          addInsetOnTop(rearLift, x+w+1, y, z, bw, d, 8, 'rgba(255,255,255,0.65)', 'rgba(0,0,0,0.45)');
-          scene.insertBefore(rearLift, block);
         } else {
           if(keepFront) scene.insertBefore(frontBalcony, block);
           if(keepRear)  scene.insertBefore(rearBalcony,  block);
@@ -384,9 +303,8 @@ function buildSvg(){
 
       if(level===3 && is25){
         const bw=35, bh=4, gap=4; const segD=(d-gap)/2;
-        const colors=statusColors[u.status];
+        const colors=safeColors(u.status);
         if(u.id==="3.2"){
-          // Two REAR small balconies. Left = staircase, Right = lift.
           const rearLeft  = makeIsoPrismRaw(x+w+1, y, z, bw, segD, bh,
             {top:stairsPatternFill,front:stairsPatternFill,side:stairsPatternFill}, 'balcony', u.id);
           const rearRight = makeIsoPrismRaw(x+w+1, y+segD+gap, z, bw, segD, bh,
@@ -409,7 +327,7 @@ function buildSvg(){
   });
 
   // Fit to viewBox
-  const vb=svg.viewBox.baseVal; const margin=40;
+  const vb=document.getElementById('buildingSvg').viewBox.baseVal; const margin=40;
   const bbox=document.getElementById('scene').getBBox();
   const scale=Math.min((vb.width-2*margin)/bbox.width, (vb.height-2*margin)/bbox.height);
   const tx=(vb.width - bbox.width*scale)/2 - bbox.x*scale;
@@ -417,7 +335,7 @@ function buildSvg(){
   document.getElementById('scene').setAttribute('transform',`translate(${tx},${ty}) scale(${scale})`);
 }
 
-/* ===== 7) INTERACTIVITY (SVG ↔ Table) ===== */
+/* ========= INTERACTIVITY ========= */
 function setSvgInteractivity(){
   const svg=document.getElementById('buildingSvg');
   svg.querySelectorAll('[data-unit]').forEach(el=>{
@@ -447,11 +365,31 @@ function openFactsheet(id){
   }
 }
 
-/* ===== 8) INITIAL RENDER + SHEET SYNC ===== */
-applyFilters();
-buildSvg();
-setSvgInteractivity();
-syncStatusesFromSheet();
+/* ========= LOAD SHEET, THEN RENDER ========= */
+async function loadFromSheet(){
+  try{
+    const res = await fetch(SHEET_CSV + "&_cb=" + Date.now(), { cache: "no-store" });
+    if(!res.ok) throw new Error("CSV fetch failed: " + res.status);
+    const txt = await res.text();
+    const rows = parseCsv(txt);
+    if(rows.length) DATA = rows;
+  }catch(e){
+    console.warn("Using fallback DATA due to sheet error:", e);
+  }
+  populateSelects();
+  applyFilters();
+  buildSvg();
+  setSvgInteractivity();
+}
+
+/* ========= INIT ========= */
+document.getElementById('floorSel').innerHTML = '<option value="all">Alle</option>';
+document.getElementById('roomsSel').innerHTML = '<option value="all">Alle</option>';
+document.getElementById('statusSel').addEventListener('change',()=>{applyFilters(); buildSvg(); setSvgInteractivity();});
+document.getElementById('floorSel').addEventListener('change',()=>{applyFilters(); buildSvg(); setSvgInteractivity();});
+document.getElementById('roomsSel').addEventListener('change',()=>{applyFilters(); buildSvg(); setSvgInteractivity();});
+
+loadFromSheet();
 </script>
 </body>
 </html>
