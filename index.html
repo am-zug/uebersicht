@@ -5,15 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Wohnungen Am Zug</title>
   <style>
-    body{margin:0;font-family:sans-serif;background:#ffffff;color:#233441}
+    :root{ --panel:#f1f3f5; --line:#cfd7dd; --head:#d2bd76; --text:#233441 }
+    body{margin:0;font-family:sans-serif;background:#fff;color:var(--text)}
     .wrap{max-width:1400px;margin:22px auto;padding:12px}
-    .panel{background:#f1f3f5;border-radius:14px;box-shadow:0 6px 20px rgba(0,0,0,.08);padding:18px 22px}
+    .panel{background:var(--panel);border-radius:14px;box-shadow:0 6px 20px rgba(0,0,0,.08);padding:18px 22px}
     .controls{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
     .field label{display:block;font-size:12px;color:#6b7b86;margin-bottom:4px}
-    select{width:100%;padding:6px 8px;border-radius:6px;border:1px solid #cfd7dd}
+    select{width:100%;padding:6px 8px;border-radius:6px;border:1px solid var(--line)}
     .grid{display:grid;grid-template-columns:1fr 2fr;gap:18px;align-items:start}
+    .table-col{min-width:0}
+    .visual-col{min-width:0}
     table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden}
-    thead{background:#d2bd76;color:#000}
+    thead{background:var(--head);color:#000}
     th,td{padding:8px 10px;font-size:14px;border-bottom:1px solid #e0e6eb;text-align:left}
     tr:hover, tr.active{background:#f8fbfd}
     .map-container{background:#fff;border-radius:12px;border:1px solid #dfe6eb;padding:10px;display:flex;align-items:center;justify-content:center;height:100%}
@@ -32,15 +35,24 @@
     .row-flash{animation:flash 1.2s ease}
     @keyframes flash{0%{background:#fff3c4} 100%{background:transparent}}
 
-    /* Subtle outlines on ALL balconies */
+    /* Keep outlines on balconies */
     .balcony polygon{stroke:rgba(0,0,0,0.1); stroke-width:2}
     .balcony.highlight polygon{filter:saturate(1.8) brightness(1.06)}
+
+    /* Mobile first: visual first, big */
+    @media (max-width: 900px){
+      .grid{display:flex;flex-direction:column}
+      .visual-col{order:-1}
+      .map-container{height:65vh}
+      .controls{grid-template-columns:1fr}
+    }
   </style>
 </head>
 <body>
 <div class="wrap">
   <div class="panel">
     <h1>Wohnungen Am Zug</h1>
+
     <div class="controls">
       <div class="field"><label>Etage</label><select id="floorSel"></select></div>
       <div class="field"><label>Status</label><select id="statusSel">
@@ -51,8 +63,9 @@
       </select></div>
       <div class="field"><label>Zimmer</label><select id="roomsSel"></select></div>
     </div>
+
     <div class="grid">
-      <div>
+      <div class="table-col">
         <table>
           <thead>
             <tr>
@@ -67,7 +80,8 @@
           <tbody id="tbody"></tbody>
         </table>
       </div>
-      <div>
+
+      <div class="visual-col">
         <div class="map-container">
           <svg id="buildingSvg" viewBox="0 0 1600 900"></svg>
         </div>
@@ -146,9 +160,9 @@ const statusColors={
   reserved:{top:'#fff3db',front:'#f0e1bf',side:'#e8d7ad'},
   rented:{top:'#f9e0e0',front:'#eac9c9',side:'#e2bcbc'}
 };
-/* special fills (15% black now) */
+/* special fills */
 const FILL_DARK15 = 'rgba(0,0,0,0.15)';
-const stairsPatternFill = 'url(#stairsPattern)';
+const STAIRS_FILL = 'url(#stairsPattern)';
 
 /* ===== 4) TABLE & FILTERS ===== */
 function renderTable(list){
@@ -235,7 +249,7 @@ function addFullLengthBalconies(x,y,z,w,d,status,unitId){
   return [leftFull, rightFull];
 }
 
-/* Inset helper for the lift symbol (small box on top face) */
+/* Lift inset (small box on top face) */
 function addInsetOnTop(g, x, y, z, w, d, insetPx, fill, stroke){
   const top = [
     [isoX(x,     y,     z), isoY(x,     y,     z)],
@@ -260,23 +274,35 @@ function addInsetOnTop(g, x, y, z, w, d, insetPx, fill, stroke){
 
 /* ===== 6) BUILD THE ISOMETRIC SCENE ===== */
 function addDefs(svg){
-  // Striped "stairs" pattern with 15% black background
+  // White stairs background, lines rotated to exactly 30°
   const defs = document.createElementNS('http://www.w3.org/2000/svg','defs');
   const pat = document.createElementNS('http://www.w3.org/2000/svg','pattern');
   pat.setAttribute('id','stairsPattern');
   pat.setAttribute('patternUnits','userSpaceOnUse');
   pat.setAttribute('width','8'); pat.setAttribute('height','8');
+  pat.setAttribute('patternTransform','rotate(30)');
+
   const bg = document.createElementNS('http://www.w3.org/2000/svg','rect');
   bg.setAttribute('x','0'); bg.setAttribute('y','0'); bg.setAttribute('width','8'); bg.setAttribute('height','8');
-  bg.setAttribute('fill', 'rgba(0,0,0,0.15)');
+  bg.setAttribute('fill', '#ffffff');
   pat.appendChild(bg);
-  const line1 = document.createElementNS('http://www.w3.org/2000/svg','path');
-  line1.setAttribute('d','M0,8 L8,0 M-2,6 L2,10 M6,-2 L10,2');
-  line1.setAttribute('stroke','rgba(0,0,0,0.45)');
-  line1.setAttribute('stroke-width','1.6');
-  pat.appendChild(line1);
+
+  // vertical lines (pattern rotated 30°)
+  const lines = document.createElementNS('http://www.w3.org/2000/svg','path');
+  lines.setAttribute('d','M0,0 L0,8 M4,0 L4,8');
+  lines.setAttribute('stroke','rgba(0,0,0,0.55)');
+  lines.setAttribute('stroke-width','1.4');
+  pat.appendChild(lines);
+
   defs.appendChild(pat);
   svg.appendChild(defs);
+}
+
+/* Compute y so that numbering runs RIGHT -> LEFT (id .1 is rightmost) */
+function yForUnit(level, subIndex, d, gapY, maxByLevel){
+  const max = maxByLevel[level];                // e.g., {1:7, 2:14, 3:3}
+  const posFromLeft = max - subIndex;           // 0 = leftmost, increasing to the right
+  return 0 + posFromLeft * (d + gapY);          // originY assumed 0
 }
 
 function buildSvg(){
@@ -294,122 +320,110 @@ function buildSvg(){
   const gapY=8;
   const floorGapZ=126;
 
-  const originX=0, originY=0;
+  const originX=0;
 
-  [1,2,3].forEach(level=>{
-    const units=DATA.filter(d=>d.level===level);
-    const x=originX;
-    const z=(level-1)*(H + floorGapZ);
-    let y=originY;
-    let seqIndex=0;
+  const maxByLevel={1:7,2:14,3:3};
 
-    units.forEach(u=>{
-      const is25 = (u.rooms===2.5);
-      const w = is25 ? W25 : W15;
-      const d = is25 ? D25 : D15;
+  DATA.forEach(u=>{
+    /* dimensions */
+    const is25 = (u.rooms===2.5);
+    const w = is25 ? W25 : W15;
+    const d = is25 ? D25 : D15;
 
-      const block=makeIsoBlock(x,y,z,w,d,H,statusColors[u.status],u.id);
-      scene.appendChild(block);
+    /* positions */
+    const z=(u.level-1)*(H + floorGapZ);
+    const sub = parseInt(u.id.split('.')[1],10);
+    const y = yForUnit(u.level, sub, d, gapY, maxByLevel);
+    const x = originX;
 
-      if(level===1 && is25){
-        // Split balconies; special rear content for 1.2 and 1.7
-        const bw=35, bh=4, gap=4; const segD=(d-gap)/2;
-        const colors=statusColors[u.status];
-        const outline=()=>({top:'none',front:'none',side:'none'});
+    /* main block */
+    const block=makeIsoBlock(x,y,z,w,d,H,statusColors[u.status],u.id);
+    scene.appendChild(block);
 
-        const left1 = makeIsoPrismRaw(x-bw-1, y, z, bw, segD, bh, outline(), 'balcony', u.id);
-        const left2 = makeIsoPrismRaw(x-bw-1, y+segD+gap, z, bw, segD, bh, colors,   'balcony', u.id);
+    /* FLOOR 1 — 2.5er */
+    if(u.level===1 && is25){
+      const bw=35, bh=4, segGap=4; const segD=(d-segGap)/2;
+      const colors=statusColors[u.status];
+      const outline=()=>({top:'none',front:'none',side:'none'});
 
-        // Default rear halves
-        let right1Colors = colors;                 // filled half
-        let right2Colors = outline();              // outline half
-        let right1Extra  = null;                   // function to add inset if needed
-        let right2Extra  = null;
+      const left1  = makeIsoPrismRaw(x-bw-1, y,            z, bw, segD, bh, outline(), 'balcony', u.id);
+      const left2  = makeIsoPrismRaw(x-bw-1, y+segD+segGap,z, bw, segD, bh, colors,   'balcony', u.id);
 
-        // 1.2: make rear like 3.2 (stairs then lift)
-        if(u.id==="1.2"){
-          right1Colors = {top:stairsPatternFill,front:stairsPatternFill,side:stairsPatternFill};
-          right2Colors = {top:FILL_DARK15,front:FILL_DARK15,side:FILL_DARK15};
-          right2Extra  = (g)=>addInsetOnTop(g, x+w+1, y+segD+gap, z, bw, segD, 6, 'rgba(255,255,255,0.65)', 'rgba(0,0,0,0.45)');
-        }
+      let right1Colors = colors;                 // default: rear upper filled
+      let right2Colors = outline();              // default: rear lower outline
+      let right1Extra=null, right2Extra=null;
 
-        // 1.7: rear outline should symbolize staircase (pattern)
-        if(u.id==="1.7"){
-          right2Colors = {top:stairsPatternFill,front:stairsPatternFill,side:stairsPatternFill};
-        }
-
-        const right1= makeIsoPrismRaw(x+w+1,  y,            z, bw, segD, bh, right1Colors, 'balcony', u.id);
-        const right2= makeIsoPrismRaw(x+w+1,  y+segD+gap,   z, bw, segD, bh, right2Colors, 'balcony', u.id);
-        if(right1Extra) right1Extra(right1);
-        if(right2Extra) right2Extra(right2);
-
-        [left1,left2].forEach(p=>scene.insertBefore(p, block));
-        [right1,right2].forEach(p=>scene.insertBefore(p, block));
+      // 1.2: rear like 3.2 (stairs + lift)
+      if(u.id==="1.2"){
+        right1Colors = {top:STAIRS_FILL,front:STAIRS_FILL,side:STAIRS_FILL};
+        right2Colors = {top:FILL_DARK15,front:FILL_DARK15,side:FILL_DARK15};
+        right2Extra  = (g)=>addInsetOnTop(g, x+w+1, y+segD+segGap, z, bw, segD, 6, 'rgba(255,255,255,0.65)', 'rgba(0,0,0,0.45)');
+      }
+      // 1.7: rear lower = staircase
+      if(u.id==="1.7"){
+        right2Colors = {top:STAIRS_FILL,front:STAIRS_FILL,side:STAIRS_FILL};
       }
 
-      if(level===2){
-        // Start with REAR at 2.1; then front/rear alternating
-        const [frontBalcony, rearBalcony] = addFullLengthBalconies(x,y,z,w,d,u.status,u.id);
-        const keepFront = (seqIndex % 2 === 1); // 2.2, 2.4, ...
-        const keepRear  = (seqIndex % 2 === 0); // 2.1, 2.3, ...
+      const right1 = makeIsoPrismRaw(x+w+1, y,            z, bw, segD, bh, right1Colors, 'balcony', u.id);
+      const right2 = makeIsoPrismRaw(x+w+1, y+segD+segGap,z, bw, segD, bh, right2Colors, 'balcony', u.id);
+      if(right1Extra) right1Extra(right1);
+      if(right2Extra) right2Extra(right2);
 
-        // Special overrides:
-        if(u.id === "2.14"){
-          // Always rear staircase
-          const bw=35, bh=4;
-          const rearStairs = makeIsoPrismRaw(x+w+1, y, z, bw, d, bh,
-            {top:stairsPatternFill,front:stairsPatternFill,side:stairsPatternFill},
-            'balcony', u.id);
-          scene.insertBefore(rearStairs, block);
-        } else if(u.id === "2.2"){
-          // Rear staircase
-          const bw=35, bh=4;
-          const rearStairs = makeIsoPrismRaw(x+w+1, y, z, bw, d, bh,
-            {top:stairsPatternFill,front:stairsPatternFill,side:stairsPatternFill},
-            'balcony', u.id);
-          scene.insertBefore(rearStairs, block);
-        } else if(u.id === "2.3"){
-          // Rear lift only
-          const bw=35, bh=4;
-          const rearLift = makeIsoPrismRaw(x+w+1, y, z, bw, d, bh,
-            {top:FILL_DARK15,front:FILL_DARK15,side:FILL_DARK15},
-            'balcony', u.id);
-          addInsetOnTop(rearLift, x+w+1, y, z, bw, d, 8, 'rgba(255,255,255,0.65)', 'rgba(0,0,0,0.45)');
-          scene.insertBefore(rearLift, block);
-        } else {
-          if(keepFront) scene.insertBefore(frontBalcony, block);
-          if(keepRear)  scene.insertBefore(rearBalcony,  block);
-        }
+      [left1,left2,right1,right2].forEach(p=>scene.insertBefore(p, block));
+    }
+
+    /* FLOOR 2 — alternating by numeric index (anchored at 2.1) + overrides */
+    if(u.level===2){
+      const [frontBalcony, rearBalcony] = addFullLengthBalconies(x,y,z,w,d,u.status,u.id);
+      const n=sub;
+      const keepRear  = (n % 2 === 1); // 2.1 rear, 2.3 rear, ...
+      const keepFront = (n % 2 === 0); // 2.2 front, 2.4 front, ...
+
+      if(u.id === "2.14" || u.id === "2.2"){
+        // Always rear staircase
+        const bw=35, bh=4;
+        const rearStairs = makeIsoPrismRaw(x+w+1, y, z, bw, d, bh,
+          {top:STAIRS_FILL,front:STAIRS_FILL,side:STAIRS_FILL}, 'balcony', u.id);
+        scene.insertBefore(rearStairs, block);
+      } else if(u.id === "2.3"){
+        // Rear lift
+        const bw=35, bh=4;
+        const rearLift = makeIsoPrismRaw(x+w+1, y, z, bw, d, bh,
+          {top:FILL_DARK15,front:FILL_DARK15,side:FILL_DARK15}, 'balcony', u.id);
+        addInsetOnTop(rearLift, x+w+1, y, z, bw, d, 8, 'rgba(255,255,255,0.65)', 'rgba(0,0,0,0.45)');
+        scene.insertBefore(rearLift, block);
+      } else {
+        if(keepFront) scene.insertBefore(frontBalcony, block);
+        if(keepRear)  scene.insertBefore(rearBalcony,  block);
       }
+    }
 
-      if(level===3 && is25){
-        const bw=35, bh=4, gap=4; const segD=(d-gap)/2;
-        const colors=statusColors[u.status];
-        if(u.id==="3.2"){
-          // Two REAR small balconies. Left = staircase, Right = lift.
-          const rearLeft  = makeIsoPrismRaw(x+w+1, y, z, bw, segD, bh,
-            {top:stairsPatternFill,front:stairsPatternFill,side:stairsPatternFill}, 'balcony', u.id);
-          const rearRight = makeIsoPrismRaw(x+w+1, y+segD+gap, z, bw, segD, bh,
-            {top:FILL_DARK15,front:FILL_DARK15,side:FILL_DARK15}, 'balcony', u.id);
-          addInsetOnTop(rearRight, x+w+1, y+segD+gap, z, bw, segD, 6, 'rgba(255,255,255,0.65)', 'rgba(0,0,0,0.45)');
-          scene.insertBefore(rearLeft,  block);
-          scene.insertBefore(rearRight, block);
-          const left2 = makeIsoPrismRaw(x-bw-1, y+segD+gap, z, bw, segD, bh, colors, 'balcony', u.id);
-          scene.insertBefore(left2, block);
-        }else{
-          const left2 = makeIsoPrismRaw(x-bw-1, y+segD+gap, z, bw, segD, bh, colors, 'balcony', u.id);
-          const right1= makeIsoPrismRaw(x+w+1,  y,           z, bw, segD, bh, colors, 'balcony', u.id);
-          [left2,right1].forEach(p=>scene.insertBefore(p, block));
-        }
+    /* FLOOR 3 — 2.5er with 3.2 special */
+    if(u.level===3 && is25){
+      const bw=35, bh=4, segGap=4; const segD=(d-segGap)/2;
+      const colors=statusColors[u.status];
+
+      if(u.id==="3.2"){
+        const rearLeft  = makeIsoPrismRaw(x+w+1, y,            z, bw, segD, bh,
+          {top:STAIRS_FILL,front:STAIRS_FILL,side:STAIRS_FILL}, 'balcony', u.id);
+        const rearRight = makeIsoPrismRaw(x+w+1, y+segD+segGap,z, bw, segD, bh,
+          {top:FILL_DARK15,front:FILL_DARK15,side:FILL_DARK15}, 'balcony', u.id);
+        addInsetOnTop(rearRight, x+w+1, y+segD+segGap, z, bw, segD, 6, 'rgba(255,255,255,0.65)', 'rgba(0,0,0,0.45)');
+        scene.insertBefore(rearLeft,  block);
+        scene.insertBefore(rearRight, block);
+
+        const left2 = makeIsoPrismRaw(x-bw-1, y+segD+segGap, z, bw, segD, bh, colors, 'balcony', u.id);
+        scene.insertBefore(left2, block);
+      }else{
+        const left2 = makeIsoPrismRaw(x-bw-1, y+segD+segGap, z, bw, segD, bh, colors, 'balcony', u.id);
+        const right1= makeIsoPrismRaw(x+w+1,  y,           z, bw, segD, bh, colors, 'balcony', u.id);
+        [left2,right1].forEach(p=>scene.insertBefore(p, block));
       }
-
-      y += d + gapY;
-      seqIndex++;
-    });
+    }
   });
 
   // Fit to viewBox
-  const vb=svg.viewBox.baseVal; const margin=40;
+  const vb=document.getElementById('buildingSvg').viewBox.baseVal; const margin=40;
   const bbox=document.getElementById('scene').getBBox();
   const scale=Math.min((vb.width-2*margin)/bbox.width, (vb.height-2*margin)/bbox.height);
   const tx=(vb.width - bbox.width*scale)/2 - bbox.x*scale;
@@ -448,10 +462,21 @@ function openFactsheet(id){
 }
 
 /* ===== 8) INITIAL RENDER + SHEET SYNC ===== */
+const floorSel=document.getElementById('floorSel');
+const roomsSel=document.getElementById('roomsSel');
+const floors=[...new Set(DATA.map(d=>d.level))];
+const rooms=[...new Set(DATA.map(d=>d.rooms))];
+floorSel.innerHTML='<option value="all">Alle</option>'+floors.map(f=>`<option value="${f}">${f}</option>`).join('');
+roomsSel.innerHTML='<option value="all">Alle</option>'+rooms.map(r=>`<option value="${r}">${r}</option>`).join('');
+
 applyFilters();
 buildSvg();
 setSvgInteractivity();
 syncStatusesFromSheet();
+
+document.getElementById('floorSel').addEventListener('change',()=>{applyFilters(); buildSvg(); setSvgInteractivity();});
+document.getElementById('statusSel').addEventListener('change',()=>{applyFilters(); buildSvg(); setSvgInteractivity();});
+document.getElementById('roomsSel').addEventListener('change',()=>{applyFilters(); buildSvg(); setSvgInteractivity();});
 </script>
 </body>
 </html>
