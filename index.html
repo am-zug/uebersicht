@@ -8,16 +8,23 @@
     body{margin:0;font-family:sans-serif;background:#ffffff;color:#233441}
     .wrap{max-width:1400px;margin:22px auto;padding:12px}
     .panel{background:#f1f3f5;border-radius:14px;box-shadow:0 6px 20px rgba(0,0,0,.08);padding:18px 22px}
+
     .controls{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
     .field label{display:block;font-size:12px;color:#6b7b86;margin-bottom:4px}
     select{width:100%;padding:6px 8px;border-radius:6px;border:1px solid #cfd7dd}
+
     .grid{display:grid;grid-template-columns:1fr 2fr;gap:18px;align-items:start}
+    .table-col{order:1;min-width:0}
+    .visual-col{order:2;min-width:0}
+
     table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden}
     thead{background:#d2bd76;color:#000}
     th,td{padding:8px 10px;font-size:14px;border-bottom:1px solid #e0e6eb;text-align:left}
     tr:hover, tr.active{background:#f8fbfd}
+
     .map-container{background:#fff;border-radius:12px;border:1px solid #dfe6eb;padding:10px;display:flex;align-items:center;justify-content:center;height:100%}
     svg{width:100%;height:100%}
+
     .legend{display:flex;gap:14px;justify-content:flex-end;margin-top:10px;font-size:13px;color:#6b7b86}
     .legend .sq{width:12px;height:12px;border-radius:2px}
     .sq.ok{background:#5BBE7C}.sq.warn{background:#F5B942}.sq.no{background:#E17575}
@@ -34,12 +41,26 @@
 
     .balcony polygon{stroke:rgba(0,0,0,0.1); stroke-width:2}
     .balcony.highlight polygon{filter:saturate(1.8) brightness(1.06)}
+
+    /* Mobile: visual first, big canvas, stacked layout */
+    @media (max-width: 900px){
+      .grid{
+        display:flex;
+        flex-direction:column;
+        gap:16px;
+      }
+      .visual-col{ order:-1; }
+      .controls{ grid-template-columns:1fr; }
+      .map-container{ height:65vh; }
+      svg{ width:100%; height:100%; }
+    }
   </style>
 </head>
 <body>
 <div class="wrap">
   <div class="panel">
     <h1>Wohnungen Am Zug</h1>
+
     <div class="controls">
       <div class="field"><label>Etage</label><select id="floorSel"></select></div>
       <div class="field"><label>Status</label><select id="statusSel">
@@ -50,8 +71,9 @@
       </select></div>
       <div class="field"><label>Zimmer</label><select id="roomsSel"></select></div>
     </div>
+
     <div class="grid">
-      <div>
+      <div class="table-col">
         <table>
           <thead>
             <tr>
@@ -66,7 +88,8 @@
           <tbody id="tbody"></tbody>
         </table>
       </div>
-      <div>
+
+      <div class="visual-col">
         <div class="map-container">
           <svg id="buildingSvg" viewBox="0 0 1600 900"></svg>
         </div>
@@ -213,7 +236,7 @@ function addInsetOnTop(g, x, y, z, w, d, insetPx, fill, stroke){
   const cx=(top[0][0]+top[1][0]+top[2][0]+top[3][0])/4, cy=(top[0][1]+top[1][1]+top[2][1]+top[3][1])/4;
   const pts=top.map(([X,Y])=>{const vx=X-cx,vy=Y-cy,len=Math.hypot(vx,vy)||1,k=(len-insetPx)/len;return [cx+vx*k,cy+vy*k];});
   const p=document.createElementNS('http://www.w3.org/2000/svg','polygon'); p.setAttribute('points',pts.map(a=>a.join(' ')).join(' '));
-  if(fill) p.setAttribute('fill',fill); else p.setAttribute('fill','none'); if(stroke){p.setAttribute('stroke',stroke); p.setAttribute('stroke-width','2');} g.appendChild(p);
+  if(fill) p.setAttribute('fill',fill); else p.setAttribute('fill','none'); if(stroke){ p.setAttribute('stroke',stroke); p.setAttribute('stroke-width','2'); } g.appendChild(p);
 }
 
 /* stairs pattern (white + 3 lines, aligned) */
@@ -237,7 +260,7 @@ function buildSvg(){
 
   [1,2,3].forEach(level=>{
     const units=DATA.filter(d=>d.level===level);
-    const x=originX; const z=(level-1)*(H+floorGapZ); let y=originY; let seqIndex=0;
+    const x=originX; const z=(level-1)*(H+floorGapZ); let y=originY;
 
     units.forEach(u=>{
       const is25=(u.rooms===2.5); const w=is25?W25:W15; const d=is25?D25:D15;
@@ -257,73 +280,42 @@ function buildSvg(){
         [left1,left2,right1,right2].forEach(p=>scene.insertBefore(p,block));
       }
 
-/* FLOOR 2 — EXACT per your table */
-if (level === 2) {
-  // your exact rule set (rear + front)
-  // rear: 'rear' (normal), 'stairs', 'lift', 'none'
-  // front: 'front' or 'none'
-  const F2_RULES = {
-    "2.1":  { rear: "rear",   front: "none"  }, // key 2.14
-    "2.2":  { rear: "none",   front: "front" }, // key 2.13
-    "2.3":  { rear: "stairs", front: "none"  }, // key 2.12
-    "2.4":  { rear: "lift",   front: "front" }, // key 2.11
-    "2.5":  { rear: "rear",   front: "none"  }, // key 2.10
-    "2.6":  { rear: "none",   front: "front" }, // key 2.9
-    "2.7":  { rear: "rear",   front: "none"  }, // key 2.8
-    "2.8":  { rear: "none",   front: "front" }, // key 2.7
-    "2.9":  { rear: "rear",   front: "none"  }, // key 2.6
-    "2.10": { rear: "none",   front: "front" }, // key 2.5
-    "2.11": { rear: "rear",   front: "none"  }, // key 2.4
-    "2.12": { rear: "none",   front: "front" }, // key 2.3
-    "2.13": { rear: "rear",   front: "none"  }, // key 2.2
-    "2.14": { rear: "stairs", front: "front" }  // key 2.1
-  };
+      /* Floor 2 — use your explicit mapping (kept as in your current file) */
+      if (level === 2) {
+        const F2_RULES = {
+          "2.1":  { rear: "rear",   front: "none"  },
+          "2.2":  { rear: "none",   front: "front" },
+          "2.3":  { rear: "stairs", front: "none"  },
+          "2.4":  { rear: "lift",   front: "front" },
+          "2.5":  { rear: "rear",   front: "none"  },
+          "2.6":  { rear: "none",   front: "front" },
+          "2.7":  { rear: "rear",   front: "none"  },
+          "2.8":  { rear: "none",   front: "front" },
+          "2.9":  { rear: "rear",   front: "none"  },
+          "2.10": { rear: "none",   front: "front" },
+          "2.11": { rear: "rear",   front: "none"  },
+          "2.12": { rear: "none",   front: "front" },
+          "2.13": { rear: "rear",   front: "none"  },
+          "2.14": { rear: "stairs", front: "front" }
+        };
+        const rule = F2_RULES[u.id] || { rear: "rear", front: "none" };
+        const [frontBalcony, rearBalcony] = addFullLengthBalconies(x,y,z,w,d,u.status,u.id);
 
-  const rule = F2_RULES[u.id] || { rear: "rear", front: "none" };
-
-  // build the standard full-length shapes once
-  const [frontBalcony, rearBalcony] =
-    addFullLengthBalconies(x, y, z, w, d, u.status, u.id);
-
-  // helper to draw a special rear plate in place of the normal one
-  function insertRearSpecial(kind) {
-    const bw = 35, bh = 4;
-    if (kind === "stairs") {
-      const rearStairs = makeIsoPrismRaw(
-        x + w + 1, y, z, bw, d, bh,
-        { top: STAIRS_FILL, front: STAIRS_FILL, side: STAIRS_FILL },
-        "balcony", u.id
-      );
-      scene.insertBefore(rearStairs, block);
-    } else if (kind === "lift") {
-      const rearLift = makeIsoPrismRaw(
-        x + w + 1, y, z, bw, d, bh,
-        { top: FILL_DARK15, front: FILL_DARK15, side: FILL_DARK15 },
-        "balcony", u.id
-      );
-      addInsetOnTop(
-        rearLift, x + w + 1, y, z, bw, d, 8,
-        "rgba(255,255,255,0.65)", "rgba(0,0,0,0.45)"
-      );
-      scene.insertBefore(rearLift, block);
-    }
-  }
-
-  // REAR
-  if (rule.rear === "rear") {
-    scene.insertBefore(rearBalcony, block);
-  } else if (rule.rear === "stairs" || rule.rear === "lift") {
-    insertRearSpecial(rule.rear);
-  } // 'none' -> nothing
-
-  // FRONT
-  if (rule.front === "front") {
-    scene.insertBefore(frontBalcony, block);
-  } // 'none' -> nothing
-}
-
-
-
+        function insertRearSpecial(kind){
+          const bw=35, bh=4;
+          if(kind==="stairs"){
+            const rearStairs = makeIsoPrismRaw(x+w+1,y,z,bw,d,bh,{top:STAIRS_FILL,front:STAIRS_FILL,side:STAIRS_FILL},'balcony',u.id);
+            scene.insertBefore(rearStairs, block);
+          }else if(kind==="lift"){
+            const rearLift = makeIsoPrismRaw(x+w+1,y,z,bw,d,bh,{top:FILL_DARK15,front:FILL_DARK15,side:FILL_DARK15},'balcony',u.id);
+            addInsetOnTop(rearLift,x+w+1,y,z,bw,d,8,'rgba(255,255,255,0.65)','rgba(0,0,0,0.45)');
+            scene.insertBefore(rearLift, block);
+          }
+        }
+        if(rule.rear==="rear"){ scene.insertBefore(rearBalcony, block); }
+        else if(rule.rear==="stairs"||rule.rear==="lift"){ insertRearSpecial(rule.rear); }
+        if(rule.front==="front"){ scene.insertBefore(frontBalcony, block); }
+      }
 
       /* Floor 3 (unchanged) */
       if(level===3 && is25){
@@ -341,7 +333,7 @@ if (level === 2) {
         }
       }
 
-      y += d + gapY; seqIndex++;
+      y += d + gapY;
     });
   });
 
