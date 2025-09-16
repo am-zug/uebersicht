@@ -257,55 +257,72 @@ function buildSvg(){
         [left1,left2,right1,right2].forEach(p=>scene.insertBefore(p,block));
       }
 
-  /* FLOOR 2 — alternation + your exact overrides */
+/* FLOOR 2 — EXACT per your table */
 if (level === 2) {
+  // your exact rule set (rear + front)
+  // rear: 'rear' (normal), 'stairs', 'lift', 'none'
+  // front: 'front' or 'none'
+  const F2_RULES = {
+    "2.1":  { rear: "rear",   front: "none"  }, // key 2.14
+    "2.2":  { rear: "none",   front: "front" }, // key 2.13
+    "2.3":  { rear: "stairs", front: "none"  }, // key 2.12
+    "2.4":  { rear: "lift",   front: "front" }, // key 2.11
+    "2.5":  { rear: "rear",   front: "none"  }, // key 2.10
+    "2.6":  { rear: "none",   front: "front" }, // key 2.9
+    "2.7":  { rear: "rear",   front: "none"  }, // key 2.8
+    "2.8":  { rear: "none",   front: "front" }, // key 2.7
+    "2.9":  { rear: "rear",   front: "none"  }, // key 2.6
+    "2.10": { rear: "none",   front: "front" }, // key 2.5
+    "2.11": { rear: "rear",   front: "none"  }, // key 2.4
+    "2.12": { rear: "none",   front: "front" }, // key 2.3
+    "2.13": { rear: "rear",   front: "none"  }, // key 2.2
+    "2.14": { rear: "stairs", front: "front" }  // key 2.1
+  };
+
+  const rule = F2_RULES[u.id] || { rear: "rear", front: "none" };
+
+  // build the standard full-length shapes once
   const [frontBalcony, rearBalcony] =
     addFullLengthBalconies(x, y, z, w, d, u.status, u.id);
 
-  // default pattern: 2.1 rear, 2.2 front, 2.3 rear, ...
-  const keepFront = (seqIndex % 2 === 1);
-  const keepRear  = (seqIndex % 2 === 0);
-
-  // IDs that must be rear-only (no front)
-  const REAR_ONLY = new Set(["2.14", "2.2", "2.4"]);
-
-  // FRONT: allow only if the pattern says so AND not rear-only
-  const allowFront = keepFront && !REAR_ONLY.has(u.id);
-
-  // REAR: required if pattern says so OR rear-only list forces it
-  const mustRear = keepRear || REAR_ONLY.has(u.id);
-
-  // --- special rear features
-  if (u.id === "2.11") {
-    // rear lift
+  // helper to draw a special rear plate in place of the normal one
+  function insertRearSpecial(kind) {
     const bw = 35, bh = 4;
-    const rearLift = makeIsoPrismRaw(
-      x + w + 1, y, z, bw, d, bh,
-      { top: FILL_DARK15, front: FILL_DARK15, side: FILL_DARK15 },
-      "balcony", u.id
-    );
-    addInsetOnTop(
-      rearLift, x + w + 1, y, z, bw, d, 8,
-      "rgba(255,255,255,0.65)", "rgba(0,0,0,0.45)"
-    );
-    scene.insertBefore(rearLift, block);
-
-  } else if (u.id === "2.12") {
-    // rear stairs (white with stripes)
-    const bw = 35, bh = 4;
-    const rearStairs = makeIsoPrismRaw(
-      x + w + 1, y, z, bw, d, bh,
-      { top: STAIRS_FILL, front: STAIRS_FILL, side: STAIRS_FILL },
-      "balcony", u.id
-    );
-    scene.insertBefore(rearStairs, block);
-
-  } else {
-    // normal balconies according to rules above
-    if (allowFront) scene.insertBefore(frontBalcony, block);
-    if (mustRear)   scene.insertBefore(rearBalcony,  block);
+    if (kind === "stairs") {
+      const rearStairs = makeIsoPrismRaw(
+        x + w + 1, y, z, bw, d, bh,
+        { top: STAIRS_FILL, front: STAIRS_FILL, side: STAIRS_FILL },
+        "balcony", u.id
+      );
+      scene.insertBefore(rearStairs, block);
+    } else if (kind === "lift") {
+      const rearLift = makeIsoPrismRaw(
+        x + w + 1, y, z, bw, d, bh,
+        { top: FILL_DARK15, front: FILL_DARK15, side: FILL_DARK15 },
+        "balcony", u.id
+      );
+      addInsetOnTop(
+        rearLift, x + w + 1, y, z, bw, d, 8,
+        "rgba(255,255,255,0.65)", "rgba(0,0,0,0.45)"
+      );
+      scene.insertBefore(rearLift, block);
+    }
   }
+
+  // REAR
+  if (rule.rear === "rear") {
+    scene.insertBefore(rearBalcony, block);
+  } else if (rule.rear === "stairs" || rule.rear === "lift") {
+    insertRearSpecial(rule.rear);
+  } // 'none' -> nothing
+
+  // FRONT
+  if (rule.front === "front") {
+    scene.insertBefore(frontBalcony, block);
+  } // 'none' -> nothing
 }
+
+
 
 
       /* Floor 3 (unchanged) */
