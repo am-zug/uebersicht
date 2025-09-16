@@ -257,41 +257,56 @@ function buildSvg(){
         [left1,left2,right1,right2].forEach(p=>scene.insertBefore(p,block));
       }
 
-      /* Floor 2 — alternation + your overrides */
-      if(level===2){
-        const [frontBalcony,rearBalcony]=addFullLengthBalconies(x,y,z,w,d,u.status,u.id);
-        const keepFront=(seqIndex%2===1); // 2.2, 2.4, …
-        const keepRear =(seqIndex%2===0); // 2.1, 2.3, …
+  /* FLOOR 2 — alternation + your exact overrides */
+if (level === 2) {
+  const [frontBalcony, rearBalcony] =
+    addFullLengthBalconies(x, y, z, w, d, u.status, u.id);
 
-        // --- force extra front on 2.1 and 2.13
-        const forceFront = (u.id==="2.1" || u.id==="2.13");
+  // default pattern: 2.1 rear, 2.2 front, 2.3 rear, ...
+  const keepFront = (seqIndex % 2 === 1);
+  const keepRear  = (seqIndex % 2 === 0);
 
-        // 1) FRONT
-        if(keepFront || forceFront){ scene.insertBefore(frontBalcony, block); }
+  // IDs that must be rear-only (no front)
+  const REAR_ONLY = new Set(["2.14", "2.2", "2.4"]);
 
-        // 2) REAR (with specific overrides)
-        if(u.id==="2.11"){                         // rear lift -> 2.11
-          const bw=35,bh=4;
-          const rearLift=makeIsoPrismRaw(x+w+1,y,z,bw,d,bh,{top:FILL_DARK15,front:FILL_DARK15,side:FILL_DARK15},'balcony',u.id);
-          addInsetOnTop(rearLift,x+w+1,y,z,bw,d,8,'rgba(255,255,255,0.65)','rgba(0,0,0,0.45)');
-          scene.insertBefore(rearLift, block);
-        } else if(u.id==="2.12"){                  // rear stairs -> 2.12
-          const bw=35,bh=4;
-          const rearStairs=makeIsoPrismRaw(x+w+1,y,z,bw,d,bh,{top:STAIRS_FILL,front:STAIRS_FILL,side:STAIRS_FILL},'balcony',u.id);
-          scene.insertBefore(rearStairs, block);
-        } else if(u.id==="2.14" || u.id==="2.2"){  // existing stairs overrides kept
-          const bw=35,bh=4;
-          const rearStairs=makeIsoPrismRaw(x+w+1,y,z,bw,d,bh,{top:STAIRS_FILL,front:STAIRS_FILL,side:STAIRS_FILL},'balcony',u.id);
-          scene.insertBefore(rearStairs, block);
-        } else if(u.id==="2.3"){                   // existing lift override kept
-          const bw=35,bh=4;
-          const rearLift=makeIsoPrismRaw(x+w+1,y,z,bw,d,bh,{top:FILL_DARK15,front:FILL_DARK15,side:FILL_DARK15},'balcony',u.id);
-          addInsetOnTop(rearLift,x+w+1,y,z,bw,d,8,'rgba(255,255,255,0.65)','rgba(0,0,0,0.45)');
-          scene.insertBefore(rearLift, block);
-        } else {
-          if(keepRear){ scene.insertBefore(rearBalcony, block); }
-        }
-      }
+  // FRONT: allow only if the pattern says so AND not rear-only
+  const allowFront = keepFront && !REAR_ONLY.has(u.id);
+
+  // REAR: required if pattern says so OR rear-only list forces it
+  const mustRear = keepRear || REAR_ONLY.has(u.id);
+
+  // --- special rear features
+  if (u.id === "2.11") {
+    // rear lift
+    const bw = 35, bh = 4;
+    const rearLift = makeIsoPrismRaw(
+      x + w + 1, y, z, bw, d, bh,
+      { top: FILL_DARK15, front: FILL_DARK15, side: FILL_DARK15 },
+      "balcony", u.id
+    );
+    addInsetOnTop(
+      rearLift, x + w + 1, y, z, bw, d, 8,
+      "rgba(255,255,255,0.65)", "rgba(0,0,0,0.45)"
+    );
+    scene.insertBefore(rearLift, block);
+
+  } else if (u.id === "2.12") {
+    // rear stairs (white with stripes)
+    const bw = 35, bh = 4;
+    const rearStairs = makeIsoPrismRaw(
+      x + w + 1, y, z, bw, d, bh,
+      { top: STAIRS_FILL, front: STAIRS_FILL, side: STAIRS_FILL },
+      "balcony", u.id
+    );
+    scene.insertBefore(rearStairs, block);
+
+  } else {
+    // normal balconies according to rules above
+    if (allowFront) scene.insertBefore(frontBalcony, block);
+    if (mustRear)   scene.insertBefore(rearBalcony,  block);
+  }
+}
+
 
       /* Floor 3 (unchanged) */
       if(level===3 && is25){
