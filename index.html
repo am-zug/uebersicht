@@ -1,125 +1,20 @@
-<!DOCTYPE html>
-<html lang="de">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Wohnungen Am Zug</title>
-  <style>
-    body{margin:0;font-family:sans-serif;background:#ffffff;color:#233441}
-    .wrap{max-width:1400px;margin:22px auto;padding:12px}
-    .panel{background:#f1f3f5;border-radius:14px;box-shadow:0 6px 20px rgba(0,0,0,.08);padding:18px 22px}
-    .controls{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
-    .field label{display:block;font-size:12px;color:#6b7b86;margin-bottom:4px}
-    select{width:100%;padding:6px 8px;border-radius:6px;border:1px solid #cfd7dd}
-    .grid{display:grid;grid-template-columns:1fr 2fr;gap:18px;align-items:start}
-    table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden}
-    thead{background:#d2bd76;color:#000}
-    th,td{padding:8px 10px;font-size:14px;border-bottom:1px solid #e0e6eb;text-align:left}
-    tr:hover, tr.active{background:#f8fbfd}
-    .map-container{background:#fff;border-radius:12px;border:1px solid #dfe6eb;padding:10px;display:flex;align-items:center;justify-content:center;height:100%}
-    svg{width:100%;height:100%}
-    .legend{display:flex;gap:14px;justify-content:flex-end;margin-top:10px;font-size:13px;color:#6b7b86}
-    .legend .sq{width:12px;height:12px;border-radius:2px}
-    .sq.ok{background:#5BBE7C}.sq.warn{background:#F5B942}.sq.no{background:#E17575}
-    .dot{display:inline-block;width:10px;height:10px;border-radius:50%}
-    .dot.available{background:#5BBE7C}
-    .dot.reserved{background:#F5B942}
-    .dot.rented{background:#E17575}
-
-    .unit-block{transition:filter .18s ease, transform .18s ease; cursor:pointer}
-    .unit-block.highlight{filter:saturate(1.8) brightness(1.06); transform:translateY(-2px)}
-    .row-highlight{background:#fff7d6 !important; box-shadow:inset 0 0 0 2px #f5b94240}
-    .row-flash{animation:flash 1.2s ease}
-    @keyframes flash{0%{background:#fff3c4} 100%{background:transparent}}
-
-    .balcony polygon{stroke:rgba(0,0,0,0.1); stroke-width:1.2} /* thinner lines */
-    .balcony.highlight polygon{filter:saturate(1.8) brightness(1.06)}
-  </style>
-</head>
-<body>
-<div class="wrap">
-  <div class="panel">
-    <h1>Wohnungen Am Zug</h1>
-    <div class="controls">
-      <div class="field"><label>Etage</label><select id="floorSel"></select></div>
-      <div class="field"><label>Status</label><select id="statusSel">
-        <option value="all">Alle</option>
-        <option value="available">Verfügbar</option>
-        <option value="reserved">Reserviert</option>
-        <option value="rented">Vermietet</option>
-      </select></div>
-      <div class="field"><label>Zimmer</label><select id="roomsSel"></select></div>
-    </div>
-    <div class="grid">
-      <div>
-        <table>
-          <thead>
-            <tr>
-              <th>Nr.</th>
-              <th>Zimmer</th>
-              <th>Etage</th>
-              <th>m²</th>
-              <th>Status</th>
-              <th>Factsheet</th>
-            </tr>
-          </thead>
-          <tbody id="tbody"></tbody>
-        </table>
-      </div>
-      <div>
-        <div class="map-container">
-          <svg id="buildingSvg" viewBox="0 0 1600 900"></svg>
-        </div>
-        <div class="legend"><span class="sq ok"></span> Verfügbar <span class="sq warn"></span> Reserviert <span class="sq no"></span> Vermietet</div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<script>
-/* ===== BASE DATA (fallback) ===== */
-const DATA=[];
-for(let i=1;i<=7;i++){DATA.push({id:`1.${i}`,rooms:2.5,level:1,m2:56,status:"available"});}
-for(let i=1;i<=14;i++){DATA.push({id:`2.${i}`,rooms:1.5,level:2,m2:32.3,status:"available"});}
-for(let i=1;i<=3;i++){DATA.push({id:`3.${i}`,rooms:2.5,level:3,m2:56,status:"available"});}
-
-/* ===== COLORS ===== */
-const statusColors={
-  available:{top:'#dff2e7',front:'#cce6d6',side:'#c2dfcf'},
-  reserved:{top:'#fff3db',front:'#f0e1bf',side:'#e8d7ad'},
-  rented:{top:'#f9e0e0',front:'#eac9c9',side:'#e2bcbc'}
-};
-
-/* ===== ISOMETRIC HELPERS ===== */
-const COS=Math.cos(Math.PI/6);
-const SIN=Math.sin(Math.PI/6);
-function isoX(x,y,z){return (x + y)*COS;}
-function isoY(x,y,z){return (y - x)*SIN - z;}
-
-function makeIsoBlock(x,y,z,w,d,h,colors,unitId){
-  const g=document.createElementNS('http://www.w3.org/2000/svg','g');
-  g.setAttribute('class','unit-block');
-  if(unitId) g.setAttribute('data-unit',unitId);
-  const top=`${isoX(x,y,z)} ${isoY(x,y,z)} ${isoX(x+w,y,z)} ${isoY(x+w,y,z)} ${isoX(x+w,y+d,z)} ${isoY(x+w,y+d,z)} ${isoX(x,y+d,z)} ${isoY(x,y+d,z)}`;
-  const pTop=document.createElementNS('http://www.w3.org/2000/svg','polygon'); pTop.setAttribute('points',top); pTop.setAttribute('fill',colors.top);
-  const front=`${isoX(x,y,z)} ${isoY(x,y,z)} ${isoX(x+w,y,z)} ${isoY(x+w,y,z)} ${isoX(x+w,y,z+h)} ${isoY(x+w,y,z+h)} ${isoX(x,y,z+h)} ${isoY(x,y,z+h)}`;
-  const pFront=document.createElementNS('http://www.w3.org/2000/svg','polygon'); pFront.setAttribute('points',front); pFront.setAttribute('fill',colors.front);
-  const side=`${isoX(x+w,y,z)} ${isoY(x+w,y,z)} ${isoX(x+w,y+d,z)} ${isoY(x+w,y+d,z)} ${isoX(x+w,y+d,z+h)} ${isoY(x+w,y+d,z+h)} ${isoX(x+w,y,z+h)} ${isoY(x+w,y,z+h)}`;
-  const pSide=document.createElementNS('http://www.w3.org/2000/svg','polygon'); pSide.setAttribute('points',side); pSide.setAttribute('fill',colors.side);
-  g.appendChild(pTop); g.appendChild(pFront); g.appendChild(pSide);
-  return g;
-}
-
-/* ===== STAIRS PATTERN ===== */
 function addDefs(svg){
   const defs = document.createElementNS('http://www.w3.org/2000/svg','defs');
+
+  // angle of the stair stripes; if it looks mirrored, flip to -30.
+  const STAIR_ROT = 30;
+
   const pat = document.createElementNS('http://www.w3.org/2000/svg','pattern');
   pat.setAttribute('id','stairsPattern');
+
+  // Scale the pattern to each balcony's box so we always get EXACTLY 3 lines
   pat.setAttribute('patternUnits','objectBoundingBox');
   pat.setAttribute('patternContentUnits','objectBoundingBox');
   pat.setAttribute('width','1');
   pat.setAttribute('height','1');
-  pat.setAttribute('patternTransform','rotate(30 0.5 0.5)');
+
+  // rotate around the center of the tile to align with the iso edges
+  pat.setAttribute('patternTransform',`rotate(${STAIR_ROT} 0.5 0.5)`);
 
   // white background
   const bg = document.createElementNS('http://www.w3.org/2000/svg','rect');
@@ -128,47 +23,21 @@ function addDefs(svg){
   bg.setAttribute('fill','#ffffff');
   pat.appendChild(bg);
 
-  // three stripes
+  // EXACTLY THREE stripes (use rects so width is relative to the object box)
   const STRIPE_COLOR = 'rgba(0,0,0,0.55)';
-  const STRIPE_W = 0.03;
-  const xs = [0.2,0.5,0.8];
-  xs.forEach(x=>{
-    const r=document.createElementNS('http://www.w3.org/2000/svg','rect');
-    r.setAttribute('x',x-STRIPE_W/2);
-    r.setAttribute('y','0');
-    r.setAttribute('width',STRIPE_W);
-    r.setAttribute('height','1');
-    r.setAttribute('fill',STRIPE_COLOR);
+  const STRIPE_W = 0.03;   // ~3% of the box → nice thin lines
+  const xs = [0.18, 0.50, 0.82];  // three positions across the box
+
+  xs.forEach(x => {
+    const r = document.createElementNS('http://www.w3.org/2000/svg','rect');
+    r.setAttribute('x', x - STRIPE_W/2);
+    r.setAttribute('y', '0');
+    r.setAttribute('width', STRIPE_W);
+    r.setAttribute('height', '1');
+    r.setAttribute('fill', STRIPE_COLOR);
     pat.appendChild(r);
   });
 
   defs.appendChild(pat);
   svg.appendChild(defs);
 }
-
-/* ===== BUILD SCENE (simplified for demo) ===== */
-function buildSvg(){
-  const svg=document.getElementById('buildingSvg');
-  svg.innerHTML='';
-  addDefs(svg);
-
-  const scene=document.createElementNS('http://www.w3.org/2000/svg','g');
-  scene.setAttribute('id','scene');
-  svg.appendChild(scene);
-
-  const W=64,D=64,H=26;
-  const block=makeIsoBlock(0,0,0,W,D,H,statusColors.available,"1.1");
-  scene.appendChild(block);
-
-  // Example stair block
-  const stairs=document.createElementNS('http://www.w3.org/2000/svg','polygon');
-  const pts=`${isoX(W+2,0,0)} ${isoY(W+2,0,0)} ${isoX(W+35,0,0)} ${isoY(W+35,0,0)} ${isoX(W+35,D,0)} ${isoY(W+35,D,0)} ${isoX(W+2,D,0)} ${isoY(W+2,D,0)}`;
-  stairs.setAttribute('points',pts);
-  stairs.setAttribute('fill','url(#stairsPattern)');
-  scene.appendChild(stairs);
-}
-
-buildSvg();
-</script>
-</body>
-</html>
